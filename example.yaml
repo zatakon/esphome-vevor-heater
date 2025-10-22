@@ -1,0 +1,137 @@
+# Vevor Heater ESPHome Configuration Example
+# This example shows how to use the simplified Vevor heater library
+
+esphome:
+  name: workshop-heater
+  friendly_name: Workshop Heater
+  project:
+    name: "vevor.diesel-heater"
+    version: "1.0.0"
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: INFO
+  baud_rate: 115200
+  hardware_uart: UART0
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  # Enable fallback hotspot
+  ap:
+    ssid: "Workshop Heater Fallback"
+    password: "fallback123"
+
+captive_portal:
+
+web_server:
+  port: 80
+
+# External components - use the library
+external_components:
+  - source: github://zatakon/esphome-vevor-heater
+    components: [vevor_heater]
+
+# UART configuration for Vevor heater
+uart:
+  id: heater_uart
+  tx_pin: GPIO2
+  rx_pin: GPIO1
+  baud_rate: 4800
+  # Important: Use inverted pins for proper communication
+  tx_pin:
+    number: GPIO2
+    inverted: true
+  rx_pin:
+    number: GPIO1
+    inverted: true
+
+# Main heater component with automatic sensor creation
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  # auto_sensors: true  # Default - creates all sensors automatically
+  target_temperature: 20.0  # Default target temperature
+  
+  # Optional: Override specific sensor names
+  temperature:
+    name: "Workshop Temperature"
+  input_voltage:
+    name: "Heater Input Voltage"
+  state:
+    name: "Heater Status"
+  power_level:
+    name: "Heater Power Level"
+  fan_speed:
+    name: "Heater Fan Speed"
+
+# Manual heater controls (switches and sliders)
+switch:
+  - platform: template
+    name: "Heater Power"
+    id: heater_power_switch
+    icon: "mdi:fire"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(my_heater).turn_on();
+    turn_off_action:
+      - lambda: |-
+          id(my_heater).turn_off();
+
+number:
+  - platform: template
+    name: "Heater Power Level"
+    id: heater_power_level
+    icon: "mdi:percent"
+    min_value: 10
+    max_value: 100
+    step: 10
+    unit_of_measurement: "%"
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(my_heater).set_power_level_percent(x);
+
+# Optional: Add climate integration for thermostat functionality
+climate:
+  - platform: vevor_heater
+    name: "Workshop Climate"
+    vevor_heater_id: my_heater
+    min_temperature: 5
+    max_temperature: 35
+
+# Optional: Add automations
+automation:
+  - alias: "Workshop Freeze Protection"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.workshop_temperature
+        below: 3.0
+    action:
+      - switch.turn_on: heater_power_switch
+      - number.set:
+          id: heater_power_level
+          value: 30
+
+  - alias: "Workshop Overheat Protection"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.workshop_temperature
+        above: 30.0
+    action:
+      - switch.turn_off: heater_power_switch
