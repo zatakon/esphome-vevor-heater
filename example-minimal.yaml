@@ -1,0 +1,53 @@
+# Minimal Vevor Heater Configuration
+# Just add these few lines to get started!
+
+esphome:
+  name: heater-controller
+  friendly_name: Heater Controller
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+logger:
+api:
+ota:
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Heater Fallback"
+    password: "heater123"
+captive_portal:
+
+# Add the library
+external_components:
+  - source: github://zatakon/esphome-vevor-heater
+    components: [vevor_heater]
+
+# UART for heater communication
+uart:
+  id: heater_uart
+  tx_pin: 
+    number: GPIO2
+    inverted: true
+  rx_pin:
+    number: GPIO1 
+    inverted: true
+  baud_rate: 4800
+
+# That's it! This creates all sensors automatically
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  # Everything else is automatic with good defaults
+
+# Optional: Add simple on/off switch
+switch:
+  - platform: template
+    name: "Heater"
+    turn_on_action:
+      - lambda: "id(my_heater).turn_on();"
+    turn_off_action:
+      - lambda: "id(my_heater).turn_off();"
