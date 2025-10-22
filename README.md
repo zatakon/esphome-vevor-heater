@@ -6,7 +6,11 @@
 
 An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Home Assistant integration. Based on the original protocol reverse-engineering work from the [vevor_heater_control](https://github.com/zatakon/vevor_heater_control) project.
 
-## 🌟 Features
+## WORK IN PROGRESS ##
+# _ want to convert my [previous](https://github.com/zatakon) repo into something more ready to use_ #
+# Should be done this weekend I hope #
+
+## Features
 
 - **Plug & Play**: Add just a few lines to your ESPHome configuration
 - **Automatic Sensor Creation**: All sensors created automatically with sensible defaults
@@ -17,7 +21,7 @@ An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Ho
 - **Easy Control**: Simple on/off and power level control
 - **Climate Platform**: Full thermostat functionality for Home Assistant
 
-## 🔧 Hardware Requirements
+## Hardware Requirements
 
 ### Supported Heaters
 - Vevor diesel heaters (2kW, 5kW models tested)
@@ -41,7 +45,7 @@ Vevor Bus ----[Protection Circuit]---- ESP32
 
 Refer to the original project's [hardware documentation](https://github.com/zatakon/vevor_heater_control#4-hardware) for the protection circuit schematic.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Add to ESPHome Configuration
 
@@ -105,7 +109,7 @@ climate:
     max_temperature: 35
 ```
 
-## 📊 Available Sensors
+## Available Sensors
 
 When `auto_sensors: true` (default), these sensors are automatically created:
 
@@ -122,7 +126,7 @@ When `auto_sensors: true` (default), these sensors are automatically created:
 | State Duration | Time in current state | s | Duration |
 | Cooling Down | Cooling down status | - | - |
 
-## ⚙️ Configuration Options
+## Configuration Options
 
 ### Basic Configuration
 
@@ -187,7 +191,7 @@ All sensors appear as individual entities with:
 ### Device Information
 All entities are grouped under a single device for easy management.
 
-## 🔄 Heater States
+## Heater States
 
 The heater reports these states:
 
@@ -200,7 +204,7 @@ The heater reports these states:
 | `Stopping/Cooling` | Shutting down safely |
 | `Disconnected` | Communication lost |
 
-## 🔧 API Reference
+## API Reference
 
 ### Control Methods
 
@@ -225,7 +229,7 @@ bool connected = id(my_heater).is_connected();
 float temp = id(my_heater).get_current_temperature();
 ```
 
-## 🛡️ Safety Features
+## Safety Features
 
 - **Communication Timeout**: Automatically detects lost communication
 - **State Validation**: Verifies all received data
@@ -233,7 +237,7 @@ float temp = id(my_heater).get_current_temperature();
 - **Failsafe Shutdown**: Safe heater shutdown on errors
 - **Over-temperature Protection**: Configurable via automations
 
-## 📜 Examples
+## Examples
 
 ### Freeze Protection
 
@@ -279,7 +283,7 @@ automation:
       - lambda: "id(my_heater).set_power_level_percent(70.0);"
 ```
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -319,7 +323,7 @@ This library implements the Vevor heater communication protocol:
 
 For detailed protocol information, see the [original project documentation](https://github.com/zatakon/vevor_heater_control).
 
-## 🤝 Contributing
+## Contributing
 
 Contributions welcome! Please:
 1. Fork the repository
@@ -327,17 +331,17 @@ Contributions welcome! Please:
 3. Test thoroughly
 4. Submit a pull request
 
-## 📜 License
+## License
 
 MIT License - see LICENSE file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- Based on protocol reverse-engineering by [zatakon](https://github.com/zatakon)
+- Based on protocol reverse-engineering in my [other](https://github.com/zatakon) repo
 - Inspired by the ESPHome community
 - Thanks to all contributors and testers
 
-## 📞 Support
+## Support
 
 For issues and questions:
 1. Check existing [GitHub Issues](https://github.com/zatakon/esphome-vevor-heater/issues)
