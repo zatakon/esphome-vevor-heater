@@ -6,9 +6,14 @@
 
 An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Home Assistant integration. Based on the original protocol reverse-engineering work from the [vevor_heater_control](https://github.com/zatakon/vevor_heater_control) project.
 
-## WORK IN PROGRESS ##
-# _ want to convert my [previous](https://github.com/zatakon) repo into something more ready to use_ #
-# Should be done this weekend I hope #
+## !!! WORK IN PROGRESS !!!
+**I want to convert my [previous](https://github.com/zatakon) repo into something more ready to use** 
+
+**Should be done this weekend I hope**
+
+**Do not used until this will be done please**
+
+---
 
 ## Features
 
