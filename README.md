@@ -6,6 +6,9 @@
 
 An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Home Assistant integration. Based on the original protocol reverse-engineering work from the [vevor_heater_control](https://github.com/zatakon/vevor_heater_control) project. Please visit that if you are interested - there are still some unknowns in the protocol and I will be glad for help. 
 
+> [!WARNING]
+> **This library is under active development!** Major changes are expected, and future versions may introduce breaking changes. Current configurations may not be compatible with upcoming releases. Please pin to a specific version if you need stability.
+
 ---
 
 ## Features
@@ -15,7 +18,7 @@ An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Ho
 - **Home Assistant Integration**: Native climate entity support
 - **Manual & Automatic Modes**: 
   - Manual mode: Direct power level control
-  - Automatic mode: Temperature-based control with external sensor**
+  - Automatic mode: Temperature-based control with external sensor*
 - **Smart On/Off Control**: Default 80% power level on startup (configurable)
 - **External Temperature Sensor Support**: Use any ESPHome temperature sensor (e.g., AHT10, DHT22, BMP280)
 - **Protocol Handling**: Robust communication with proper error handling
@@ -29,10 +32,10 @@ I tested functionality briefly. Please report bugs if you find them.
 *experimental
 
 ## Todo
-- **Testing automatic mode**
-- **P controller for holding temperature set adjusting power**
-- **Integrate climate entity**
-- **Adding anti-freeze mode**
+- **Test automatic mode functionality**
+- **Implement P controller for maintaining target temperature by adjusting power**
+- **Complete climate entity integration**
+- **Add anti-freeze mode**
 
 ## Hardware Requirements
 
@@ -62,6 +65,11 @@ Refer to the original project's [hardware documentation](https://github.com/zata
 ### 1. Add to ESPHome Configuration
 
 #### Basic Manual Mode (Simple Power Control)
+In manual mode, the heater runs at a fixed power level that you control:
+- Direct power level control (10-100%)
+- No automatic temperature regulation
+- External temperature sensor is optional
+- Ideal for simple on/off control
 
 ```yaml
 # Add the library
@@ -108,7 +116,15 @@ number:
 
 #### Automatic Mode with Temperature Sensor - don't use please, will be modified
 
-Will be implemented 
+*Will be implemented*
+
+In automatic mode, the heater maintains a target temperature:
+- Temperature-based control
+- External temperature sensor is **MANDATORY**
+- Works with climate entity for thermostat control
+- Automatically adjusts power based on temperature delta
+
+**Important:** The heater will refuse to turn on in automatic mode if no external temperature sensor is configured or if the sensor has no valid reading.
 
 <!-- ```yaml
 # I2C for temperature sensor
@@ -148,7 +164,7 @@ vevor_heater:
 
 That's it! This creates all sensors with automatic names and good defaults. -->
 
-### 2. Add Climate Integration (Optional) - not tested
+### 2. Add Climate Integration (Optional)
 
 Will be implemented 
 
@@ -181,59 +197,6 @@ When `auto_sensors: true` (default), these sensors are automatically created:
 | Cooling Down                 | Cooling down status           | -    | -            |
 
 ## Configuration Options
-
-### Basic Configuration
-
-```yaml
-vevor_heater:
-  id: my_heater
-  uart_id: heater_uart
-  auto_sensors: true              # Default: true
-  control_mode: manual            # manual or automatic (default: manual)
-  default_power_percent: 80       # Power level on startup (10-100%, default: 80)
-  target_temperature: 20.0        # Default target temp (for automatic mode)
-  min_temperature: 5.0            # Minimum temperature
-  max_temperature: 35.0           # Maximum temperature
-  external_temperature_sensor: room_temp  # Required for automatic mode
-```
-
-### Control Modes
-
-#### Manual Mode
-In manual mode, the heater runs at a fixed power level that you control:
-- Direct power level control (10-100%)
-- No automatic temperature regulation
-- External temperature sensor is optional
-- Ideal for simple on/off control
-
-```yaml
-vevor_heater:
-  id: my_heater
-  uart_id: heater_uart
-  control_mode: manual
-  default_power_percent: 80
-  # External sensor is optional in manual mode
-  external_temperature_sensor: room_temp
-```
-
-#### Automatic Mode
-In automatic mode, the heater maintains a target temperature:
-- Temperature-based control
-- External temperature sensor is **MANDATORY**
-- Works with climate entity for thermostat control
-- Automatically adjusts power based on temperature delta
-
-```yaml
-vevor_heater:
-  id: my_heater
-  uart_id: heater_uart
-  control_mode: automatic
-  default_power_percent: 80
-  target_temperature: 20
-  external_temperature_sensor: room_temp  # REQUIRED!
-```
-
-**Important:** The heater will refuse to turn on in automatic mode if no external temperature sensor is configured or if the sensor has no valid reading.
 
 ### Custom Sensor Names
 
