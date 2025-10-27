@@ -1,12 +1,13 @@
-# Vevor Heater ESPHome Configuration Example
-# This example shows how to use the simplified Vevor heater library
+substitutions:
+  id_name: rnw_esphm_c3_01_workshop_heater
+  friendly_name: esp32c3-workshop-heater
 
 esphome:
-  name: workshop-heater
-  friendly_name: Workshop Heater
+  name: ${friendly_name}
+  friendly_name: ${friendly_name}
   project:
     name: "vevor.diesel-heater"
-    version: "1.0.0"
+    version: "2.0.0"
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -17,15 +18,16 @@ esp32:
 logger:
   level: INFO
   baud_rate: 115200
-  hardware_uart: UART0
+  hardware_uart: USB_SERIAL_JTAG  # Use USB JTAG for logging on ESP32-C3
 
 # Enable Home Assistant API
 api:
   encryption:
-    key: !secret api_encryption_key
+    key: !secret api_key
 
 ota:
-  password: !secret ota_password
+  - platform: esphome
+    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
@@ -39,45 +41,32 @@ wifi:
 captive_portal:
 
 web_server:
+  local: True
   port: 80
 
-# External components - use the library
+# Add the library
 external_components:
   - source: github://zatakon/esphome-vevor-heater
     components: [vevor_heater]
 
 # UART configuration for Vevor heater
 uart:
-  id: heater_uart
-  tx_pin: GPIO2
-  rx_pin: GPIO1
-  baud_rate: 4800
-  # Important: Use inverted pins for proper communication
-  tx_pin:
-    number: GPIO2
-    inverted: true
-  rx_pin:
-    number: GPIO1
-    inverted: true
+  - id: heater_serial
+    rx_pin: 
+      number: GPIO1
+      inverted: true
+    tx_pin:
+      number: GPIO0
+      inverted: true
+    baud_rate: 4800
 
 # Main heater component with automatic sensor creation
+# Using MANUAL mode
 vevor_heater:
   id: my_heater
-  uart_id: heater_uart
-  # auto_sensors: true  # Default - creates all sensors automatically
-  target_temperature: 20.0  # Default target temperature
-  
-  # Optional: Override specific sensor names
-  temperature:
-    name: "Workshop Temperature"
-  input_voltage:
-    name: "Heater Input Voltage"
-  state:
-    name: "Heater Status"
-  power_level:
-    name: "Heater Power Level"
-  fan_speed:
-    name: "Heater Fan Speed"
+  uart_id: heater_serial
+  control_mode: manual           # Manual mode - heater runs at set power level
+  default_power_percent: 80      # Default 80% power when turned on
 
 # Manual heater controls (switches and sliders)
 switch:
@@ -102,36 +91,8 @@ number:
     max_value: 100
     step: 10
     unit_of_measurement: "%"
+    initial_value: 80
     optimistic: true
     set_action:
       - lambda: |-
           id(my_heater).set_power_level_percent(x);
-
-# Optional: Add climate integration for thermostat functionality
-climate:
-  - platform: vevor_heater
-    name: "Workshop Climate"
-    vevor_heater_id: my_heater
-    min_temperature: 5
-    max_temperature: 35
-
-# Optional: Add automations
-automation:
-  - alias: "Workshop Freeze Protection"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.workshop_temperature
-        below: 3.0
-    action:
-      - switch.turn_on: heater_power_switch
-      - number.set:
-          id: heater_power_level
-          value: 30
-
-  - alias: "Workshop Overheat Protection"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.workshop_temperature
-        above: 30.0
-    action:
-      - switch.turn_off: heater_power_switch

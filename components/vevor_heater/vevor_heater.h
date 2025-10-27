@@ -15,11 +15,17 @@ namespace vevor_heater {
 
 static const char *const TAG = "vevor_heater";
 
+// Control modes
+enum class ControlMode : uint8_t {
+  MANUAL = 0,
+  AUTOMATIC = 1
+};
+
 // Heater states from protocol analysis
 enum class HeaterState : uint8_t {
   OFF = 0x00,
   GLOW_PLUG_PREHEAT = 0x01,
-  IGNITED = 0x02,
+  HEATING_UP = 0x02,
   STABLE_COMBUSTION = 0x03,
   STOPPING_COOLING = 0x04,
   UNKNOWN = 0xFF
@@ -48,6 +54,11 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_power_level(uint8_t level) { 
     power_level_ = std::max(1, std::min(10, (int)level)); 
   }
+  void set_control_mode(ControlMode mode) { control_mode_ = mode; }
+  void set_default_power_percent(float percent) { default_power_percent_ = percent; }
+  
+  // External temperature sensor
+  void set_external_temperature_sensor(sensor::Sensor *sensor) { external_temperature_sensor_ = sensor; }
   
   // Sensor setters
   void set_temperature_sensor(sensor::Sensor *sensor) { temperature_sensor_ = sensor; }
@@ -66,12 +77,21 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void turn_off();
   void set_power_level_percent(float percent);
   
+  // Control mode management
+  bool is_automatic_mode() const { return control_mode_ == ControlMode::AUTOMATIC; }
+  bool is_manual_mode() const { return control_mode_ == ControlMode::MANUAL; }
+  float get_external_temperature() const { return external_temperature_; }
+  bool has_external_sensor() const { 
+    return external_temperature_sensor_ != nullptr && 
+           !std::isnan(external_temperature_); 
+  }
+  
   // Status getters
   HeaterState get_heater_state() const { return current_state_; }
   float get_current_temperature() const { return current_temperature_; }
   bool is_heating() const { 
     return current_state_ == HeaterState::GLOW_PLUG_PREHEAT || 
-           current_state_ == HeaterState::IGNITED || 
+           current_state_ == HeaterState::HEATING_UP || 
            current_state_ == HeaterState::STABLE_COMBUSTION; 
   }
   bool is_connected() const { return last_received_time_ + COMMUNICATION_TIMEOUT_MS > millis(); }
@@ -80,14 +100,13 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void setup() override;
   void update() override;
   void dump_config() override;
-  float get_setup_priority() const override { return setup_priority::AFTER_UART; }
+  float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
   // Communication handling
   void send_controller_frame();
   void process_heater_frame(const std::vector<uint8_t> &frame);
   void check_uart_data();
-  uint8_t calculate_checksum(const std::vector<uint8_t> &data, size_t length);
   bool validate_frame(const std::vector<uint8_t> &frame, uint8_t expected_length);
   
   // Data parsing helpers
@@ -108,12 +127,15 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   
   // Control state
   bool heater_enabled_{false};
-  uint8_t power_level_{5};  // 1-10 scale
+  uint8_t power_level_{8};  // 1-10 scale, default 80%
   float target_temperature_{20.0};
   HeaterState current_state_{HeaterState::OFF};
+  ControlMode control_mode_{ControlMode::MANUAL};
+  float default_power_percent_{80.0};
   
   // Parsed sensor values
   float current_temperature_{0.0};
+  float external_temperature_{NAN};
   float input_voltage_{0.0};
   float heat_exchanger_temperature_{0.0};
   uint16_t fan_speed_{0};
@@ -124,6 +146,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   
   // Sensor pointers
   sensor::Sensor *temperature_sensor_{nullptr};
+  sensor::Sensor *external_temperature_sensor_{nullptr};
   sensor::Sensor *input_voltage_sensor_{nullptr};
   text_sensor::TextSensor *state_sensor_{nullptr};
   sensor::Sensor *power_level_sensor_{nullptr};
@@ -178,16 +201,6 @@ template<typename... Ts> class HeaterSetPowerAction : public Action<Ts...> {
   explicit HeaterSetPowerAction(VevorHeater *heater) : heater_(heater) {}
   TEMPLATABLE_VALUE(float, power_level)
   void play(Ts... x) override { heater_->set_power_level_percent(this->power_level_.value(x...)); }
-  
- protected:
-  VevorHeater *heater_;
-};
-
-class HeaterStateTrigger : public Trigger<HeaterState> {
- public:
-  explicit HeaterStateTrigger(VevorHeater *heater) : heater_(heater) {
-    heater_->add_on_state_callback([this](HeaterState state) { this->trigger(state); });
-  }
   
  protected:
   VevorHeater *heater_;
