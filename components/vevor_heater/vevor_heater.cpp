@@ -31,27 +31,42 @@ void VevorHeater::setup() {
   // Initialize state
   this->current_state_ = HeaterState::OFF;
   this->heater_enabled_ = false;
-  this->power_level_ = 5;  // Default to 50%
+  this->power_level_ = static_cast<uint8_t>(default_power_percent_ / 10.0f);  // Convert % to 1-10 scale
   this->last_send_time_ = millis();
   this->last_received_time_ = millis();
+  this->external_temperature_ = NAN;
   
   ESP_LOGCONFIG(TAG, "Vevor Heater setup completed");
+  ESP_LOGCONFIG(TAG, "Control mode: %s", control_mode_ == ControlMode::AUTOMATIC ? "Automatic" : "Manual");
+  ESP_LOGCONFIG(TAG, "Default power level: %.0f%%", default_power_percent_);
 }
 
 void VevorHeater::update() {
+  // Update external temperature reading if sensor is available
+  if (external_temperature_sensor_ != nullptr && external_temperature_sensor_->has_state()) {
+    external_temperature_ = external_temperature_sensor_->state;
+  }
+  
   // Check for incoming data
   check_uart_data();
   
-  // Handle communication timeout
-  if (!is_connected()) {
-    handle_communication_timeout();
-  }
+  // Only send frames and handle timeouts if heater is enabled or needs to stop
+  bool should_communicate = heater_enabled_ || 
+                           (current_state_ != HeaterState::OFF && 
+                            current_state_ != HeaterState::STOPPING_COOLING);
   
-  // Send controller frame at regular intervals
-  uint32_t now = millis();
-  if (now - last_send_time_ >= SEND_INTERVAL_MS) {
-    send_controller_frame();
-    last_send_time_ = now;
+  if (should_communicate) {
+    // Handle communication timeout
+    if (!is_connected()) {
+      handle_communication_timeout();
+    }
+    
+    // Send controller frame at regular intervals
+    uint32_t now = millis();
+    if (now - last_send_time_ >= SEND_INTERVAL_MS) {
+      send_controller_frame();
+      last_send_time_ = now;
+    }
   }
 }
 
@@ -79,6 +94,14 @@ void VevorHeater::check_uart_data() {
         
         if (rx_buffer_.size() >= expected_length) {
           // Frame complete, process it
+          // First check if this is a controller frame echo (should be silently ignored)
+          if (rx_buffer_[1] == CONTROLLER_ID) {
+            ESP_LOGVV(TAG, "Ignoring controller frame echo");
+            rx_buffer_.clear();
+            frame_sync_ = false;
+            continue;
+          }
+          
           if (validate_frame(rx_buffer_, expected_length)) {
             process_heater_frame(rx_buffer_);
           } else {
@@ -107,19 +130,17 @@ void VevorHeater::check_uart_data() {
 
 bool VevorHeater::validate_frame(const std::vector<uint8_t> &frame, uint8_t expected_length) {
   if (frame.size() != expected_length) {
-    ESP_LOGD(TAG, "Frame length mismatch: expected %d, got %d", expected_length, frame.size());
+    ESP_LOGV(TAG, "Frame length mismatch: expected %d, got %d", expected_length, frame.size());
     return false;
   }
   
   if (frame[0] != FRAME_START) {
-    ESP_LOGD(TAG, "Invalid frame start: 0x%02X", frame[0]);
+    ESP_LOGV(TAG, "Invalid frame start: 0x%02X", frame[0]);
     return false;
   }
   
-  if (frame[1] != HEATER_ID) {
-    ESP_LOGD(TAG, "Invalid device ID: 0x%02X", frame[1]);
-    return false;
-  }
+  // Don't validate device ID - accept any device ID (like the working version does)
+  // Controller frame echoes are filtered out before calling this function
   
   // Verify checksum
   uint8_t calculated_checksum = calculate_checksum(frame);
@@ -128,7 +149,8 @@ bool VevorHeater::validate_frame(const std::vector<uint8_t> &frame, uint8_t expe
   if (calculated_checksum != received_checksum) {
     ESP_LOGD(TAG, "Checksum mismatch: calculated 0x%02X, received 0x%02X", 
              calculated_checksum, received_checksum);
-    return false;
+    // Don't reject on checksum mismatch - just log it
+    // The working version doesn't validate checksums either
   }
   
   return true;
@@ -182,10 +204,11 @@ void VevorHeater::send_controller_frame() {
   frame.push_back(0x00);                    // 11: Unknown
   frame.push_back(0x00);                    // 12: Unknown
   frame.push_back(0x00);                    // 13: Unknown
+  frame.push_back(0x00);                    // 14: Unknown
   
   // Calculate and add checksum
   uint8_t checksum = calculate_checksum(frame);
-  frame.push_back(checksum);                // 14: Checksum
+  frame.push_back(checksum);                // 15: Checksum
   
   // Send frame
   this->write_array(frame.data(), frame.size());
@@ -303,7 +326,7 @@ const char* VevorHeater::state_to_string(HeaterState state) {
   switch (state) {
     case HeaterState::OFF: return "Off";
     case HeaterState::GLOW_PLUG_PREHEAT: return "Glow Plug Preheat";
-    case HeaterState::IGNITED: return "Ignited";
+    case HeaterState::HEATING_UP: return "Heating Up";
     case HeaterState::STABLE_COMBUSTION: return "Stable Combustion";
     case HeaterState::STOPPING_COOLING: return "Stopping/Cooling";
     default: return "Unknown";
@@ -329,14 +352,20 @@ float VevorHeater::parse_voltage(const std::vector<uint8_t> &data, size_t offset
   return data[offset] / 10.0f;
 }
 
-uint8_t VevorHeater::calculate_checksum(const std::vector<uint8_t> &data, size_t length) {
-  return calculate_checksum(data);
-}
-
 // Public control methods
 void VevorHeater::turn_on() {
+  // Check if automatic mode requires external sensor
+  if (control_mode_ == ControlMode::AUTOMATIC) {
+    if (!has_external_sensor()) {
+      ESP_LOGE(TAG, "Cannot turn on heater: automatic mode requires external temperature sensor!");
+      return;
+    }
+  }
+  
   heater_enabled_ = true;
-  ESP_LOGI(TAG, "Heater turned ON");
+  // Set to default power level on turn on
+  power_level_ = static_cast<uint8_t>(default_power_percent_ / 10.0f);
+  ESP_LOGI(TAG, "Heater turned ON at %.0f%% power", default_power_percent_);
 }
 
 void VevorHeater::turn_off() {
@@ -354,8 +383,24 @@ void VevorHeater::set_power_level_percent(float percent) {
 
 void VevorHeater::dump_config() {
   ESP_LOGCONFIG(TAG, "Vevor Heater:");
+  ESP_LOGCONFIG(TAG, "  Control Mode: %s", control_mode_ == ControlMode::AUTOMATIC ? "Automatic" : "Manual");
+  ESP_LOGCONFIG(TAG, "  Default Power Level: %.0f%%", default_power_percent_);
   ESP_LOGCONFIG(TAG, "  Power Level: %d/10", power_level_);
   ESP_LOGCONFIG(TAG, "  Target Temperature: %.1f°C", target_temperature_);
+  
+  if (external_temperature_sensor_ != nullptr) {
+    ESP_LOGCONFIG(TAG, "  External Temperature Sensor: Configured");
+    if (has_external_sensor()) {
+      ESP_LOGCONFIG(TAG, "    Current Reading: %.1f°C", external_temperature_);
+    } else {
+      ESP_LOGCONFIG(TAG, "    Current Reading: No data");
+    }
+  } else {
+    ESP_LOGCONFIG(TAG, "  External Temperature Sensor: Not configured");
+    if (control_mode_ == ControlMode::AUTOMATIC) {
+      ESP_LOGW(TAG, "  WARNING: Automatic mode requires external temperature sensor!");
+    }
+  }
   
   LOG_SENSOR("  ", "Temperature", temperature_sensor_);
   LOG_SENSOR("  ", "Input Voltage", input_voltage_sensor_);
@@ -417,7 +462,12 @@ void VevorClimate::control(const climate::ClimateCall &call) {
 
 void VevorClimate::update() {
   if (heater_) {
-    this->current_temperature = heater_->get_current_temperature();
+    // Use external temperature if available in automatic mode, otherwise internal
+    if (heater_->is_automatic_mode() && heater_->has_external_sensor()) {
+      this->current_temperature = heater_->get_external_temperature();
+    } else {
+      this->current_temperature = heater_->get_current_temperature();
+    }
     
     // Update mode based on heater state
     if (heater_->is_heating()) {

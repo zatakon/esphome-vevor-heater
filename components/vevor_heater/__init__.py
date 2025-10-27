@@ -37,6 +37,13 @@ CONF_TARGET_TEMPERATURE = "target_temperature"
 CONF_CURRENT_TEMPERATURE = "current_temperature"
 CONF_MIN_TEMPERATURE = "min_temperature"
 CONF_MAX_TEMPERATURE = "max_temperature"
+CONF_CONTROL_MODE = "control_mode"
+CONF_DEFAULT_POWER_PERCENT = "default_power_percent"
+CONF_EXTERNAL_TEMPERATURE_SENSOR = "external_temperature_sensor"
+
+# Control mode options
+CONTROL_MODE_MANUAL = "manual"
+CONTROL_MODE_AUTOMATIC = "automatic"
 
 # Sensor configuration keys
 CONF_TEMPERATURE = "temperature"
@@ -116,6 +123,14 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
             cv.Optional(CONF_AUTO_SENSORS, default=True): cv.boolean,
             cv.Optional(CONF_CLIMATE_MODE, default=False): cv.boolean,
+            cv.Optional(CONF_CONTROL_MODE, default=CONTROL_MODE_MANUAL): cv.enum(
+                {CONTROL_MODE_MANUAL: "manual", CONTROL_MODE_AUTOMATIC: "automatic"},
+                upper=False
+            ),
+            cv.Optional(CONF_DEFAULT_POWER_PERCENT, default=80.0): cv.float_range(
+                min=10.0, max=100.0
+            ),
+            cv.Optional(CONF_EXTERNAL_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
             cv.Optional(CONF_TARGET_TEMPERATURE, default=20.0): cv.float_range(
                 min=5.0, max=35.0
             ),
@@ -152,6 +167,21 @@ async def to_code(config):
     uart_component = await cg.get_variable(config[CONF_UART_ID])
     cg.add(var.set_uart_parent(uart_component))
 
+    # Set control mode
+    control_mode = config[CONF_CONTROL_MODE]
+    if control_mode == CONTROL_MODE_AUTOMATIC:
+        cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::AUTOMATIC")))
+    else:
+        cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::MANUAL")))
+    
+    # Set default power percent
+    cg.add(var.set_default_power_percent(config[CONF_DEFAULT_POWER_PERCENT]))
+    
+    # Set external temperature sensor if provided
+    if CONF_EXTERNAL_TEMPERATURE_SENSOR in config:
+        external_sensor = await cg.get_variable(config[CONF_EXTERNAL_TEMPERATURE_SENSOR])
+        cg.add(var.set_external_temperature_sensor(external_sensor))
+
     # Auto-create sensors if enabled
     if config[CONF_AUTO_SENSORS]:
         sensors_to_create = [
@@ -179,10 +209,13 @@ async def to_code(config):
                 # Use user-provided configuration
                 sens_config = config[sensor_key]
             else:
-                # Use default configuration with automatic naming
-                sens_config = SENSOR_SCHEMAS[sensor_key].schema({
+                # Use default configuration with automatic naming and ID
+                sens_config = {
+                    CONF_ID: cg.RawExpression(f"{config[CONF_ID]}_sensor_{sensor_key}"),
                     CONF_NAME: f"Vevor Heater {sensor_key.replace('_', ' ').title()}"
-                })
+                }
+                # Apply the schema to get proper defaults
+                sens_config = SENSOR_SCHEMAS[sensor_key](sens_config)
             
             sens = await sensor.new_sensor(sens_config)
             cg.add(getattr(var, setter_method)(sens))
@@ -192,9 +225,11 @@ async def to_code(config):
             if sensor_key in config:
                 sens_config = config[sensor_key]
             else:
-                sens_config = SENSOR_SCHEMAS[sensor_key].schema({
+                sens_config = {
+                    CONF_ID: cg.RawExpression(f"{config[CONF_ID]}_text_sensor_{sensor_key}"),
                     CONF_NAME: f"Vevor Heater {sensor_key.replace('_', ' ').title()}"
-                })
+                }
+                sens_config = SENSOR_SCHEMAS[sensor_key](sens_config)
             
             sens = await text_sensor.new_text_sensor(sens_config)
             cg.add(getattr(var, setter_method)(sens))
@@ -204,9 +239,11 @@ async def to_code(config):
             if sensor_key in config:
                 sens_config = config[sensor_key]
             else:
-                sens_config = SENSOR_SCHEMAS[sensor_key].schema({
+                sens_config = {
+                    CONF_ID: cg.RawExpression(f"{config[CONF_ID]}_binary_sensor_{sensor_key}"),
                     CONF_NAME: f"Vevor Heater {sensor_key.replace('_', ' ').title()}"
-                })
+                }
+                sens_config = SENSOR_SCHEMAS[sensor_key](sens_config)
             
             sens = await binary_sensor.new_binary_sensor(sens_config)
             cg.add(getattr(var, setter_method)(sens))

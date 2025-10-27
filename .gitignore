@@ -1,0 +1,14 @@
+# ESPHome secrets and sensitive files
+secrets.yaml
+
+# ESPHome build and cache files
+.esphome/
+*.bin
+*.elf
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
