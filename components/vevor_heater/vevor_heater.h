@@ -60,8 +60,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   // External temperature sensor
   void set_external_temperature_sensor(sensor::Sensor *sensor) { external_temperature_sensor_ = sensor; }
   
-  // Sensor setters
-  void set_temperature_sensor(sensor::Sensor *sensor) { temperature_sensor_ = sensor; }
+  // Sensor setters - removed duplicate set_temperature_sensor
   void set_input_voltage_sensor(sensor::Sensor *sensor) { input_voltage_sensor_ = sensor; }
   void set_state_sensor(text_sensor::TextSensor *sensor) { state_sensor_ = sensor; }
   void set_power_level_sensor(sensor::Sensor *sensor) { power_level_sensor_ = sensor; }
@@ -144,8 +143,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   uint16_t state_duration_{0};
   bool cooling_down_{false};
   
-  // Sensor pointers
-  sensor::Sensor *temperature_sensor_{nullptr};
+  // Sensor pointers - removed duplicate temperature_sensor_
   sensor::Sensor *external_temperature_sensor_{nullptr};
   sensor::Sensor *input_voltage_sensor_{nullptr};
   text_sensor::TextSensor *state_sensor_{nullptr};
