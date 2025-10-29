@@ -35,6 +35,7 @@ void VevorHeater::setup() {
   this->last_send_time_ = millis();
   this->last_received_time_ = millis();
   this->external_temperature_ = NAN;
+  this->climate_control_active_ = false;
   
   ESP_LOGCONFIG(TAG, "Vevor Heater setup completed");
   ESP_LOGCONFIG(TAG, "Control mode: %s", control_mode_ == ControlMode::AUTOMATIC ? "Automatic" : "Manual");
@@ -381,12 +382,41 @@ void VevorHeater::set_power_level_percent(float percent) {
   }
 }
 
+// Climate-specific control methods
+void VevorHeater::set_climate_target_temperature(float temperature) {
+  target_temperature_ = temperature;
+  climate_control_active_ = true;
+  ESP_LOGI(TAG, "Climate target temperature set to %.1f°C", temperature);
+}
+
+void VevorHeater::set_climate_preset(const std::string &preset) {
+  float power_percent = preset_to_power_percent(preset);
+  set_power_level_percent(power_percent);
+  ESP_LOGI(TAG, "Climate preset set to %s (%.0f%% power)", preset.c_str(), power_percent);
+}
+
+float VevorHeater::preset_to_power_percent(const std::string &preset) {
+  if (preset == "Eco") return 30.0f;
+  if (preset == "Comfort") return 60.0f;
+  if (preset == "Normal") return 80.0f;
+  if (preset == "Boost") return 100.0f;
+  return 80.0f;  // Default to Normal
+}
+
+std::string VevorHeater::power_percent_to_preset(float percent) {
+  if (percent <= 35.0f) return "Eco";
+  if (percent <= 65.0f) return "Comfort";
+  if (percent <= 85.0f) return "Normal";
+  return "Boost";
+}
+
 void VevorHeater::dump_config() {
   ESP_LOGCONFIG(TAG, "Vevor Heater:");
   ESP_LOGCONFIG(TAG, "  Control Mode: %s", control_mode_ == ControlMode::AUTOMATIC ? "Automatic" : "Manual");
   ESP_LOGCONFIG(TAG, "  Default Power Level: %.0f%%", default_power_percent_);
   ESP_LOGCONFIG(TAG, "  Power Level: %d/10", power_level_);
   ESP_LOGCONFIG(TAG, "  Target Temperature: %.1f°C", target_temperature_);
+  ESP_LOGCONFIG(TAG, "  Climate Control Active: %s", YESNO(climate_control_active_));
   
   if (external_temperature_sensor_ != nullptr) {
     ESP_LOGCONFIG(TAG, "  External Temperature Sensor: Configured");
@@ -421,63 +451,169 @@ void VevorClimate::setup() {
     this->mark_failed();
     return;
   }
+  
+  // Initialize with default preset if presets are supported
+  if (supports_presets_) {
+    this->preset = default_preset_;
+  }
+  
+  ESP_LOGCONFIG(TAG, "VevorClimate setup completed");
+  ESP_LOGCONFIG(TAG, "  Temperature range: %.1f°C to %.1f°C", min_temperature_, max_temperature_);
+  ESP_LOGCONFIG(TAG, "  Temperature step: %.1f°C", temperature_step_);
+  ESP_LOGCONFIG(TAG, "  Power control: %s", YESNO(power_control_enabled_));
+  ESP_LOGCONFIG(TAG, "  Supports presets: %s", YESNO(supports_presets_));
 }
 
 climate::ClimateTraits VevorClimate::traits() {
   auto traits = climate::ClimateTraits();
+  
+  // Basic traits
   traits.set_supports_current_temperature(true);
   traits.set_supports_two_point_target_temperature(false);
-  traits.set_visual_min_temperature(min_temperature);
-  traits.set_visual_max_temperature(max_temperature);
-  traits.set_visual_temperature_step(1.0f);
-  traits.set_supported_modes({climate::CLIMATE_MODE_OFF, climate::CLIMATE_MODE_HEAT});
+  traits.set_visual_min_temperature(min_temperature_);
+  traits.set_visual_max_temperature(max_temperature_);
+  traits.set_visual_temperature_step(temperature_step_);
+  
+  // Supported modes
+  traits.set_supported_modes({
+    climate::CLIMATE_MODE_OFF,
+    climate::CLIMATE_MODE_HEAT
+  });
+  
+  // Preset support
+  if (supports_presets_) {
+    traits.set_supported_presets({
+      "Eco",
+      "Comfort", 
+      "Normal",
+      "Boost"
+    });
+  }
+  
+  // Custom features - power control
+  if (power_control_enabled_) {
+    traits.set_supports_fan_modes(true);
+    traits.set_supported_fan_modes({
+      "Low",    // 30%
+      "Medium", // 60%
+      "High",   // 80%
+      "Max"     // 100%
+    });
+  }
+  
   return traits;
 }
 
 void VevorClimate::control(const climate::ClimateCall &call) {
+  bool state_changed = false;
+  
+  // Handle mode changes
   if (call.get_mode().has_value()) {
     climate::ClimateMode mode = *call.get_mode();
     
     switch (mode) {
       case climate::CLIMATE_MODE_OFF:
         heater_->turn_off();
+        heater_->set_climate_control_active(false);
         break;
       case climate::CLIMATE_MODE_HEAT:
         heater_->turn_on();
+        heater_->set_climate_control_active(true);
         break;
       default:
         break;
     }
     
     this->mode = mode;
+    state_changed = true;
   }
   
+  // Handle target temperature changes
   if (call.get_target_temperature().has_value()) {
     this->target_temperature = *call.get_target_temperature();
-    heater_->set_target_temperature(this->target_temperature);
+    heater_->set_climate_target_temperature(this->target_temperature);
+    state_changed = true;
+  }
+  
+  // Handle preset changes
+  if (call.get_preset().has_value() && supports_presets_) {
+    std::string preset = *call.get_preset();
+    this->preset = preset;
+    heater_->set_climate_preset(preset);
+    state_changed = true;
+  }
+  
+  // Handle fan mode changes (used for power control)
+  if (call.get_fan_mode().has_value() && power_control_enabled_) {
+    std::string fan_mode = *call.get_fan_mode();
+    this->fan_mode = fan_mode;
+    
+    // Map fan modes to power percentages
+    float power_percent = 80.0f;  // Default
+    if (fan_mode == "Low") power_percent = 30.0f;
+    else if (fan_mode == "Medium") power_percent = 60.0f;
+    else if (fan_mode == "High") power_percent = 80.0f;
+    else if (fan_mode == "Max") power_percent = 100.0f;
+    
+    heater_->set_power_level_percent(power_percent);
+    state_changed = true;
+  }
+  
+  if (state_changed) {
+    this->publish_state();
+  }
+}
+
+void VevorClimate::update() {
+  if (!heater_) return;
+  
+  // Update current temperature
+  if (heater_->is_automatic_mode() && heater_->has_external_sensor()) {
+    this->current_temperature = heater_->get_external_temperature();
+  } else {
+    this->current_temperature = heater_->get_current_temperature();
+  }
+  
+  // Update mode based on heater state
+  if (heater_->is_enabled()) {
+    this->mode = climate::CLIMATE_MODE_HEAT;
+    this->action = heater_->is_heating() ? climate::CLIMATE_ACTION_HEATING : climate::CLIMATE_ACTION_IDLE;
+  } else {
+    this->mode = climate::CLIMATE_MODE_OFF;
+    this->action = climate::CLIMATE_ACTION_OFF;
+  }
+  
+  // Update target temperature from heater
+  this->target_temperature = heater_->get_target_temperature();
+  
+  // Update preset based on power level if presets are supported
+  if (supports_presets_) {
+    this->preset = heater_->power_percent_to_preset(heater_->get_power_level_percent());
+  }
+  
+  // Update fan mode based on power level if power control is enabled
+  if (power_control_enabled_) {
+    float power_percent = heater_->get_power_level_percent();
+    if (power_percent <= 35.0f) this->fan_mode = "Low";
+    else if (power_percent <= 65.0f) this->fan_mode = "Medium";
+    else if (power_percent <= 85.0f) this->fan_mode = "High";
+    else this->fan_mode = "Max";
   }
   
   this->publish_state();
 }
 
-void VevorClimate::update() {
+void VevorClimate::set_power_percent(float percent) {
   if (heater_) {
-    // Use external temperature if available in automatic mode, otherwise internal
-    if (heater_->is_automatic_mode() && heater_->has_external_sensor()) {
-      this->current_temperature = heater_->get_external_temperature();
-    } else {
-      this->current_temperature = heater_->get_current_temperature();
-    }
-    
-    // Update mode based on heater state
-    if (heater_->is_heating()) {
-      this->mode = climate::CLIMATE_MODE_HEAT;
-    } else {
-      this->mode = climate::CLIMATE_MODE_OFF;
-    }
-    
-    this->publish_state();
+    heater_->set_power_level_percent(percent);
   }
+}
+
+float VevorClimate::get_power_percent() const {
+  if (heater_) {
+    return heater_->get_power_level_percent();
+  }
+  return 0.0f;
 }
 
 }  // namespace vevor_heater
