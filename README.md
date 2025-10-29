@@ -1,15 +1,10 @@
 # ESPHome Vevor Heater Library
 
-[![ESPHome](https://img.shields.io/badge/ESPHome-Compatible-blue)](https://esphome.io)
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Compatible-green)](https://www.home-assistant.io/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Home Assistant integration. Based on the original protocol reverse-engineering work from the vevor_heater_control project. Please visit that if you are interested - there are still some unknowns in the protocol and I will be glad for help.
 
-An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Home Assistant integration. Based on the original protocol reverse-engineering work from the [vevor_heater_control](https://github.com/zatakon/vevor_heater_control) project. Please visit that if you are interested - there are still some unknowns in the protocol and I will be glad for help. 
+## ⚠️ Warning
 
-> [!WARNING]
-> **This library is under active development!** Major changes are expected, and future versions may introduce breaking changes. Current configurations may not be compatible with upcoming releases. Please pin to a specific version if you need stability.
-
----
+**This library is under active development!** Major changes are expected, and future versions may introduce breaking changes. Current configurations may not be compatible with upcoming releases. Please pin to a specific version if you need stability.
 
 ## Features
 
@@ -27,11 +22,12 @@ An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Ho
 - **Easy Control**: Simple on/off and power level control
 - **Climate Platform**: Full thermostat functionality for Home Assistant
 
-I tested functionality briefly. Please report bugs if you find them. 
+I tested functionality briefly. Please report bugs if you find them.
 
 *experimental
 
 ## Todo
+
 - **Test automatic mode functionality**
 - **Implement P controller for maintaining target temperature by adjusting power**
 - **Complete climate entity integration**
@@ -40,10 +36,12 @@ I tested functionality briefly. Please report bugs if you find them.
 ## Hardware Requirements
 
 ### Supported Heaters
+
 - Vevor diesel heaters (model XMZ-D2 2 kW, 5 kW tested)
 - Other heaters using the same protocol may work
 
 ### ESP32 Board
+
 - ESP32-C3, ESP32, ESP32-S2, ESP32-S3
 - Minimum 2 GPIO pins for UART communication
 
@@ -51,21 +49,18 @@ I tested functionality briefly. Please report bugs if you find them.
 
 **Important**: The Vevor bus operates at ~5V with high noise. **DO NOT** connect directly to ESP32 pins!
 
-Be careful and connect the RX transistor to the 3.3V rail, not 5V. \
-**Double check the transistor's** pinout. \
-Feel free to use any pin for TX and RX. \
-**Put pullup resistor between data line and 5V**
+Be careful and connect the RX transistor to the 3.3V rail, not 5V. **Double check the transistor's** pinout. Feel free to use any pin for TX and RX. **Put pullup resistor between data line and 5V**
 
-![Connection ESP32 to Vevor](https://github.com/zatakon/vevor_heater_control/blob/main/docs/images/vevor_heater_esp32.PNG?raw=true)
-
-Refer to the original project's [hardware documentation](https://github.com/zatakon/vevor_heater_control#4-hardware) for more informations.
+Refer to the original project's hardware documentation for more informations.
 
 ## Quick Start
 
 ### 1. Add to ESPHome Configuration
 
 #### Basic Manual Mode (Simple Power Control)
+
 In manual mode, the heater runs at a fixed power level that you control:
+
 - Direct power level control (10-100%)
 - No automatic temperature regulation
 - External temperature sensor is optional
@@ -80,20 +75,20 @@ external_components:
 # UART configuration
 uart:
   id: heater_uart
-  tx_pin: 
+  tx_pin:
     number: GPIO2
-    inverted: true  # Important!
+    inverted: true # Important!
   rx_pin:
-    number: GPIO1 
-    inverted: true  # Important!
+    number: GPIO1
+    inverted: true # Important!
   baud_rate: 4800
 
 # Heater component - creates all sensors automatically!
 vevor_heater:
   id: my_heater
   uart_id: heater_uart
-  control_mode: manual           # Manual mode (default)
-  default_power_percent: 80      # Starts at 80% power when turned on
+  control_mode: manual # Manual mode (default)
+  default_power_percent: 80 # Starts at 80% power when turned on
 
 switch:
   - platform: template
@@ -119,6 +114,7 @@ number:
 *Will be implemented*
 
 In automatic mode, the heater maintains a target temperature:
+
 - Temperature-based control
 - External temperature sensor is **MANDATORY**
 - Works with climate entity for thermostat control
@@ -126,75 +122,27 @@ In automatic mode, the heater maintains a target temperature:
 
 **Important:** The heater will refuse to turn on in automatic mode if no external temperature sensor is configured or if the sensor has no valid reading.
 
-<!-- ```yaml
-# I2C for temperature sensor
-i2c:
-  sda: GPIO7
-  scl: GPIO8
-
-# External temperature sensor (REQUIRED for automatic mode)
-sensor:
-  - platform: aht10
-    temperature:
-      name: "Room Temperature"
-      id: room_temp
-    humidity:
-      name: "Room Humidity"
-
-# UART configuration
-uart:
-  id: heater_uart
-  tx_pin: 
-    number: GPIO2
-    inverted: true
-  rx_pin:
-    number: GPIO1 
-    inverted: true
-  baud_rate: 4800
-
-# Heater with automatic temperature control
-vevor_heater:
-  id: my_heater
-  uart_id: heater_uart
-  control_mode: automatic        # Automatic temperature control
-  default_power_percent: 80      # Default power level
-  target_temperature: 20         # Default target
-  external_temperature_sensor: room_temp  # MANDATORY for automatic mode
-```
-
-That's it! This creates all sensors with automatic names and good defaults. -->
-
 ### 2. Add Climate Integration (Optional)
 
-Will be implemented 
-
-<!-- ```yaml
-climate:
-  - platform: vevor_heater
-    name: "Workshop Climate"
-    vevor_heater_id: my_heater
-    min_temperature: 5
-    max_temperature: 35
-``` -->
+Will be implemented
 
 ## Available Sensors
 
-*TODO:* Heat Exchanger Temperature is duplicit
-
 When `auto_sensors: true` (default), these sensors are automatically created:
 
-| Sensor                       | Description                   | Unit | Device Class |
-|------------------------------|-------------------------------|------|--------------|
-| Temperature                  | Heat exchanger temperature    | °C   | Temperature  |
-| Input Voltage                | Heater input voltage          | V    | Voltage      |
-| State                        | Current heater state          | -    | -            |
-| Power Level                  | Current power level           | %    | Power        |
-| Fan Speed                    | Combustion fan speed          | RPM  | -            |
-| Pump Frequency               | Fuel pump frequency           | Hz   | -            |
-| Glow Plug Current            | Glow plug current draw        | A    | Current      |
-| Heat Exchanger Temperature   | Detailed heat exchanger temp  | °C   | Temperature  |
-| State Duration               | Time in current state         | s    | Duration     |
-| Cooling Down                 | Cooling down status           | -    | -            |
+| Sensor | Description | Unit | Device Class |
+|--------|-------------|------|-------------|
+| Heat Exchanger Temperature | Main heater temperature | °C | Temperature |
+| Input Voltage | Heater input voltage | V | Voltage |
+| State | Current heater state | - | - |
+| Power Level | Current power level | % | Power |
+| Fan Speed | Combustion fan speed | RPM | - |
+| Pump Frequency | Fuel pump frequency | Hz | - |
+| Glow Plug Current | Glow plug current draw | A | Current |
+| State Duration | Time in current state | s | Duration |
+| Cooling Down | Cooling down status | - | - |
+
+**Note:** Previous versions had a duplicate "Temperature" sensor that was removed. Only "Heat Exchanger Temperature" is now available as the main temperature reading.
 
 ## Configuration Options
 
@@ -210,15 +158,14 @@ vevor_heater:
     filters:
       - calibrate_linear:
           - 10.0 -> 10.5
-          - 16.0 -> 15.5  # Calibration if needed
+          - 16.0 -> 15.5 # Calibration if needed
   state:
     name: "Heater Status"
 ```
 
 ### Supported External Temperature Sensors
 
-You can use any [ESPHome temperature sensor](https://esphome.io/components/#environmental) as the external sensor. 
-
+You can use any ESPHome temperature sensor as the external sensor.
 
 Then link it to the heater:
 
@@ -237,7 +184,7 @@ vevor_heater:
   uart_id: heater_uart
   auto_sensors: false
   # Only define the sensors you want
-  temperature:
+  heat_exchanger_temperature:
     name: "Temperature"
   state:
     name: "Status"
@@ -246,20 +193,18 @@ vevor_heater:
 ## Home Assistant Integration
 
 ### Climate Entity
+
 - Will be implemented
-<!-- The climate platform creates a native Home Assistant thermostat with:
-- Current temperature display
-- Target temperature control
-- Heat/Off mode switching
-- Visual temperature controls -->
 
 ### Sensor Entities
+
 - All sensors appear as individual entities with:
   - Proper device classes for correct icons
   - Historical data logging
   - Use in automations and scripts
 
 ### Device Information
+
 - All entities are grouped under a single device for easy management.
 
 ## Heater States
@@ -270,7 +215,7 @@ The heater reports these states:
 |-------|-------------|
 | `Off` | Heater is off |
 | `Glow Plug Preheat` | Just started |
-| `heating up` | Preparing for ignition |
+| `Heating Up` | Preparing for ignition |
 | `Stable Combustion` | Running normally, fuel injected |
 | `Stopping/Cooling` | Shutting down safely |
 | `Disconnected` | Communication lost |
@@ -308,74 +253,6 @@ float temp = id(my_heater).get_current_temperature();
 - **Failsafe Shutdown**: Safe heater shutdown on errors
 - **Over-temperature Protection**: Configurable via automations
 
-<!-- ## Examples
-
-### Manual Control with Temperature Display
-
-```yaml
-# Manual mode with external temperature sensor for display only
-vevor_heater:
-  id: my_heater
-  uart_id: heater_uart
-  control_mode: manual
-  default_power_percent: 80
-  external_temperature_sensor: room_temp
-
-switch:
-  - platform: template
-    name: "Heater"
-    turn_on_action:
-      - lambda: "id(my_heater).turn_on();"  # Turns on at 80%
-    turn_off_action:
-      - lambda: "id(my_heater).turn_off();"
-
-number:
-  - platform: template
-    name: "Power Level"
-    min_value: 10
-    max_value: 100
-    step: 10
-    set_action:
-      - lambda: "id(my_heater).set_power_level_percent(x);"
-```
-
-### Automatic Temperature Control
-
-```yaml
-# Automatic mode with climate entity
-vevor_heater:
-  id: my_heater
-  uart_id: heater_uart
-  control_mode: automatic
-  default_power_percent: 80
-  target_temperature: 20
-  external_temperature_sensor: room_temp
-
-climate:
-  - platform: vevor_heater
-    name: "Workshop Thermostat"
-    vevor_heater_id: my_heater
-    min_temperature: 5
-    max_temperature: 35
-```
-
-### Daily Schedule
-
-```yaml
-automation:
-  - alias: "Morning Warmup"
-    trigger:
-      platform: time
-      at: "07:00:00"
-    condition:
-      condition: numeric_state
-      entity_id: sensor.workshop_temperature
-      below: 15.0
-    action:
-      - lambda: "id(my_heater).turn_on();"
-      - lambda: "id(my_heater).set_power_level_percent(70.0);"
-``` -->
-
 ## Troubleshooting
 
 ### Common Issues
@@ -408,17 +285,26 @@ logger:
 ## Protocol Information
 
 This library implements the Vevor heater communication protocol:
+
 - **Baud Rate**: 4800
 - **Frame Format**: Custom binary protocol
 - **Communication**: Half-duplex, controller-initiated
 - **Update Interval**: 1 second
 - **Timeout**: 5 seconds
 
-For detailed protocol information, see the [original project documentation](https://github.com/zatakon/vevor_heater_control).
+For detailed protocol information, see the original project documentation.
+
+## Recent Fixes
+
+### Temperature Sensor Issues Fixed (v1.1)
+- **Removed duplicate Temperature sensor**: Only "Heat Exchanger Temperature" sensor is now created
+- **Fixed temperature scaling**: Temperature values are now correctly scaled (was 10x too small)
+- **Cleaner sensor configuration**: Simplified sensor creation logic
 
 ## Contributing
 
 Contributions welcome! Please:
+
 1. Fork the repository
 2. Create a feature branch
 3. Test thoroughly
@@ -430,21 +316,20 @@ MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-- Based on protocol reverse-engineering in my [other](https://github.com/zatakon) repo
+- Based on protocol reverse-engineering in my other repo
 - Inspired by the ESPHome community
 - Thanks to all contributors and testers
 
 ## Support
 
 For issues and questions:
-1. Check existing [GitHub Issues](https://github.com/zatakon/esphome-vevor-heater/issues)
+
+1. Check existing GitHub Issues
 2. Create a new issue with:
    - ESPHome configuration
    - Debug logs
    - Hardware setup details
 3. Join the discussion in the ESPHome community
-
----
 
 ## Support the Project
 
@@ -452,14 +337,10 @@ If you find this library helpful and want to support its development, consider b
 
 Your support helps me dedicate more time to improving this project, adding new features, and maintaining compatibility with the latest ESPHome releases. Every contribution, no matter how small, is greatly appreciated! 🙏
 
-[![Sponsor](https://img.shields.io/badge/Sponsor_via_Revolut-❤️_Buy_me_a_coffee-ff69b4?style=for-the-badge)](https://revolut.me/zatakon)
-
 ### Interested in the Protocol?
 
-Check out the [**vevor_heater_control**](https://github.com/zatakon/vevor_heater_control) repository for reverse engineering details, protocol documentation, and help with adding new functions to this library. Contributions and discoveries are always welcome! 🔧
+Check out the **vevor_heater_control** repository for reverse engineering details, protocol documentation, and help with adding new functions to this library. Contributions and discoveries are always welcome! 🔧
 
 Thank you for using this library and being part of the community! 🎉
-
----
 
 **Made with ❤️ for the ESPHome and Home Assistant community**
