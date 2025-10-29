@@ -9,6 +9,8 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
 #include <vector>
+#include <map>
+#include <string>
 
 namespace esphome {
 namespace vevor_heater {
@@ -36,6 +38,14 @@ enum class ControllerState : uint8_t {
   CMD_OFF = 0x02,
   CMD_START = 0x06,
   CMD_RUNNING = 0x08
+};
+
+// Climate preset modes
+enum class ClimatePreset : uint8_t {
+  ECO = 0,      // 30% power
+  COMFORT = 1,  // 60% power
+  NORMAL = 2,   // 80% power
+  BOOST = 3     // 100% power
 };
 
 // Communication constants
@@ -77,6 +87,12 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void turn_off();
   void set_power_level_percent(float percent);
   
+  // Climate-specific control methods
+  void set_climate_target_temperature(float temperature);
+  void set_climate_preset(const std::string &preset);
+  bool is_climate_control_active() const { return climate_control_active_; }
+  void set_climate_control_active(bool active) { climate_control_active_ = active; }
+  
   // Control mode management
   bool is_automatic_mode() const { return control_mode_ == ControlMode::AUTOMATIC; }
   bool is_manual_mode() const { return control_mode_ == ControlMode::MANUAL; }
@@ -89,12 +105,16 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   // Status getters
   HeaterState get_heater_state() const { return current_state_; }
   float get_current_temperature() const { return current_temperature_; }
+  float get_target_temperature() const { return target_temperature_; }
+  uint8_t get_power_level() const { return power_level_; }
+  float get_power_level_percent() const { return power_level_ * 10.0f; }
   bool is_heating() const { 
     return current_state_ == HeaterState::GLOW_PLUG_PREHEAT || 
            current_state_ == HeaterState::HEATING_UP || 
            current_state_ == HeaterState::STABLE_COMBUSTION; 
   }
   bool is_connected() const { return last_received_time_ + COMMUNICATION_TIMEOUT_MS > millis(); }
+  bool is_enabled() const { return heater_enabled_; }
   
   // Component lifecycle
   void setup() override;
@@ -119,6 +139,10 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void update_sensors(const std::vector<uint8_t> &frame);
   void handle_communication_timeout();
   
+  // Climate helper methods
+  float preset_to_power_percent(const std::string &preset);
+  std::string power_percent_to_preset(float percent);
+  
   // Communication state
   std::vector<uint8_t> rx_buffer_;
   uint32_t last_received_time_{0};
@@ -132,6 +156,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   HeaterState current_state_{HeaterState::OFF};
   ControlMode control_mode_{ControlMode::MANUAL};
   float default_power_percent_{80.0};
+  bool climate_control_active_{false};
   
   // Parsed sensor values
   float current_temperature_{0.0};
@@ -158,23 +183,42 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   binary_sensor::BinarySensor *cooling_down_sensor_{nullptr};
 };
 
-// Climate integration class
+// Enhanced Climate integration class
 class VevorClimate : public climate::Climate, public Component {
  public:
   void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
-  void set_target_temperature(float temperature) { target_temperature = temperature; }
-  void set_min_temperature(float temperature) { min_temperature = temperature; }
-  void set_max_temperature(float temperature) { max_temperature = temperature; }
+  void set_min_temperature(float temperature) { min_temperature_ = temperature; }
+  void set_max_temperature(float temperature) { max_temperature_ = temperature; }
+  void set_temperature_step(float step) { temperature_step_ = step; }
+  void set_power_control_enabled(bool enabled) { power_control_enabled_ = enabled; }
+  void set_supports_presets(bool supports) { supports_presets_ = supports; }
+  void set_default_preset(const std::string &preset) { default_preset_ = preset; }
   
   void setup() override;
   void control(const climate::ClimateCall &call) override;
   climate::ClimateTraits traits() override;
   void update();
   
+  // Power control methods
+  void set_power_percent(float percent);
+  float get_power_percent() const;
+  
  protected:
   VevorHeater *heater_{nullptr};
-  float min_temperature{5.0};
-  float max_temperature{35.0};
+  float min_temperature_{5.0};
+  float max_temperature_{35.0};
+  float temperature_step_{1.0};
+  bool power_control_enabled_{true};
+  bool supports_presets_{true};
+  std::string default_preset_{"Normal"};
+  
+  // Preset definitions
+  std::map<std::string, float> preset_power_map_ = {
+    {"Eco", 30.0f},
+    {"Comfort", 60.0f},
+    {"Normal", 80.0f},
+    {"Boost", 100.0f}
+  };
 };
 
 // Automation triggers and actions
@@ -201,6 +245,16 @@ template<typename... Ts> class HeaterSetPowerAction : public Action<Ts...> {
   explicit HeaterSetPowerAction(VevorHeater *heater) : heater_(heater) {}
   TEMPLATABLE_VALUE(float, power_level)
   void play(Ts... x) override { heater_->set_power_level_percent(this->power_level_.value(x...)); }
+  
+ protected:
+  VevorHeater *heater_;
+};
+
+template<typename... Ts> class HeaterSetTemperatureAction : public Action<Ts...> {
+ public:
+  explicit HeaterSetTemperatureAction(VevorHeater *heater) : heater_(heater) {}
+  TEMPLATABLE_VALUE(float, temperature)
+  void play(Ts... x) override { heater_->set_climate_target_temperature(this->temperature_.value(x...)); }
   
  protected:
   VevorHeater *heater_;
