@@ -1,0 +1,236 @@
+substitutions:
+  id_name: vevor_heater_climate
+  friendly_name: "VEVOR Heater with Climate Control"
+
+esphome:
+  name: ${id_name}
+  friendly_name: ${friendly_name}
+  project:
+    name: "vevor.diesel-heater-climate"
+    version: "2.1.0"
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: INFO
+  baud_rate: 115200
+  hardware_uart: USB_SERIAL_JTAG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  # Enable fallback hotspot
+  ap:
+    ssid: "VEVOR Heater Climate Fallback"
+    password: "fallback123"
+
+captive_portal:
+
+web_server:
+  local: true
+  port: 80
+
+# Add the enhanced library
+external_components:
+  - source: github://zatakon/esphome-vevor-heater@enhanced-climate-integration
+    components: [vevor_heater]
+
+# UART configuration for VEVOR heater
+uart:
+  - id: heater_serial
+    rx_pin: 
+      number: GPIO1
+      inverted: true
+    tx_pin:
+      number: GPIO0
+      inverted: true
+    baud_rate: 4800
+
+# Optional: External temperature sensor for automatic mode
+sensor:
+  - platform: dht
+    pin: GPIO2
+    temperature:
+      id: external_temp
+      name: "Room Temperature"
+      accuracy_decimals: 1
+    humidity:
+      name: "Room Humidity"
+      accuracy_decimals: 1
+    update_interval: 30s
+
+# Main heater component with automatic sensor creation
+vevor_heater:
+  id: my_heater
+  uart_id: heater_serial
+  control_mode: automatic         # Automatic mode with temperature control
+  default_power_percent: 80       # Default 80% power when turned on
+  external_temperature_sensor: external_temp  # Use DHT sensor for room temperature
+  target_temperature: 22.0        # Default target temperature
+  min_temperature: 10.0          # Minimum settable temperature
+  max_temperature: 30.0          # Maximum settable temperature
+  auto_sensors: true             # Automatically create all sensors
+
+# Enhanced Climate Integration
+climate:
+  - platform: vevor_heater
+    name: "VEVOR Heater Climate"
+    id: heater_climate
+    vevor_heater_id: my_heater
+    min_temperature: 10.0
+    max_temperature: 30.0
+    temperature_step: 0.5
+    power_control: true           # Enable power control via fan modes
+    supports_presets: true        # Enable preset modes
+    default_preset: "Normal"      # Default preset
+
+# Additional manual controls (optional)
+switch:
+  - platform: template
+    name: "Heater Manual Override"
+    id: heater_manual_switch
+    icon: "mdi:fire"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(my_heater).turn_on();
+          id(my_heater).set_climate_control_active(false);
+    turn_off_action:
+      - lambda: |-
+          id(my_heater).turn_off();
+
+number:
+  - platform: template
+    name: "Heater Manual Power Level"
+    id: heater_manual_power
+    icon: "mdi:percent"
+    min_value: 10
+    max_value: 100
+    step: 10
+    unit_of_measurement: "%"
+    initial_value: 80
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(my_heater).set_power_level_percent(x);
+          id(my_heater).set_climate_control_active(false);
+
+# Text sensors for climate information
+text_sensor:
+  - platform: template
+    name: "Climate Control Status"
+    id: climate_status
+    icon: "mdi:thermostat"
+    lambda: |-
+      if (id(my_heater).is_climate_control_active()) {
+        return {"Climate Control Active"};
+      } else {
+        return {"Manual Control"};
+      }
+    update_interval: 5s
+
+  - platform: template
+    name: "Current Preset"
+    id: current_preset
+    icon: "mdi:tune"
+    lambda: |-
+      float power = id(my_heater).get_power_level_percent();
+      if (power <= 35.0f) return {"Eco (30%)"};
+      if (power <= 65.0f) return {"Comfort (60%)"};
+      if (power <= 85.0f) return {"Normal (80%)"};
+      return {"Boost (100%)"};
+    update_interval: 5s
+
+# Additional sensor for power consumption estimation
+sensor:
+  - platform: template
+    name: "Estimated Power Consumption"
+    id: estimated_power
+    icon: "mdi:flash"
+    unit_of_measurement: "W"
+    device_class: power
+    accuracy_decimals: 0
+    lambda: |-
+      if (!id(my_heater).is_heating()) {
+        return 0.0;
+      }
+      // Estimate based on power level (assuming max 2000W heater)
+      float power_percent = id(my_heater).get_power_level_percent();
+      return (power_percent / 100.0) * 2000.0;
+    update_interval: 10s
+
+# Binary sensor for heating status
+binary_sensor:
+  - platform: template
+    name: "Heater Active"
+    id: heater_active
+    icon: "mdi:fire"
+    device_class: heat
+    lambda: |-
+      return id(my_heater).is_heating();
+    update_interval: 5s
+
+# Automation examples
+automation:
+  # Auto-turn off when target temperature is reached (with hysteresis)
+  - alias: "Temperature Control"
+    trigger:
+      - platform: numeric_state
+        entity_id: external_temp
+        above: 23.0  # 1 degree above target
+    condition:
+      - lambda: |-
+          return id(my_heater).is_climate_control_active() && 
+                 id(my_heater).get_target_temperature() <= 22.5;
+    action:
+      - lambda: |-
+          id(heater_climate).make_call()
+            .set_mode(esphome::climate::CLIMATE_MODE_OFF)
+            .perform();
+      - logger.log: "Heater turned off - target temperature reached"
+
+  # Auto-turn on when temperature drops below target
+  - alias: "Temperature Recovery"
+    trigger:
+      - platform: numeric_state
+        entity_id: external_temp
+        below: 21.0  # 1 degree below target
+    condition:
+      - lambda: |-
+          return id(my_heater).is_climate_control_active() && 
+                 !id(my_heater).is_enabled();
+    action:
+      - lambda: |-
+          id(heater_climate).make_call()
+            .set_mode(esphome::climate::CLIMATE_MODE_HEAT)
+            .perform();
+      - logger.log: "Heater turned on - temperature below target"
+
+  # Safety automation - turn off if temperature sensor fails
+  - alias: "Temperature Sensor Safety"
+    trigger:
+      - platform: state
+        entity_id: external_temp
+        to: "unavailable"
+        for:
+          minutes: 5
+    action:
+      - lambda: |-
+          id(my_heater).turn_off();
+      - logger.log:
+          level: WARN
+          message: "Heater turned off - external temperature sensor unavailable"
