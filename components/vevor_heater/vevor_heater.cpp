@@ -2,6 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
 #include <cinttypes>
+#include <ctime>
 
 namespace esphome {
 namespace vevor_heater {
@@ -36,9 +37,21 @@ void VevorHeater::setup() {
   this->last_received_time_ = millis();
   this->external_temperature_ = NAN;
   
+  // Initialize fuel consumption tracking
+  this->last_consumption_update_ = millis();
+  this->hourly_data_.hour_start_time = millis();
+  this->hourly_data_.consumption_in_hour = 0.0f;
+  this->current_day_ = get_days_since_epoch();
+  
+  // Setup persistent storage for fuel consumption
+  this->pref_fuel_consumption_ = global_preferences->make_preference<FuelConsumptionData>(fnv1_hash("fuel_consumption"));
+  load_fuel_consumption_data();
+  
   ESP_LOGCONFIG(TAG, "Vevor Heater setup completed");
   ESP_LOGCONFIG(TAG, "Control mode: %s", control_mode_ == ControlMode::AUTOMATIC ? "Automatic" : "Manual");
   ESP_LOGCONFIG(TAG, "Default power level: %.0f%%", default_power_percent_);
+  ESP_LOGCONFIG(TAG, "Injected per pulse: %.2f ml", injected_per_pulse_);
+  ESP_LOGCONFIG(TAG, "Daily consumption: %.2f ml", daily_consumption_ml_);
 }
 
 void VevorHeater::update() {
@@ -46,6 +59,9 @@ void VevorHeater::update() {
   if (external_temperature_sensor_ != nullptr && external_temperature_sensor_->has_state()) {
     external_temperature_ = external_temperature_sensor_->state;
   }
+  
+  // Check for daily reset
+  check_daily_reset();
   
   // Check for incoming data
   check_uart_data();
@@ -67,6 +83,19 @@ void VevorHeater::update() {
       send_controller_frame();
       last_send_time_ = now;
     }
+  }
+  
+  // Update hourly consumption every hour
+  uint32_t current_time = millis();
+  if (current_time - hourly_data_.hour_start_time >= 3600000) { // 1 hour = 3600000 ms
+    if (hourly_consumption_sensor_) {
+      hourly_consumption_sensor_->publish_state(hourly_data_.consumption_in_hour);
+    }
+    hourly_consumption_ml_ = hourly_data_.consumption_in_hour;
+    
+    // Reset for next hour
+    hourly_data_.hour_start_time = current_time;
+    hourly_data_.consumption_in_hour = 0.0f;
   }
 }
 
@@ -296,7 +325,12 @@ void VevorHeater::update_sensors(const std::vector<uint8_t> &frame) {
   // Pump frequency (byte 23)
   if (pump_frequency_sensor_ && frame.size() > 23) {
     uint8_t pump_raw = frame[23];
-    pump_frequency_ = pump_raw / 10.0f;
+    float new_pump_frequency = pump_raw / 10.0f;
+    
+    // Update fuel consumption based on pump frequency change
+    update_fuel_consumption(new_pump_frequency);
+    
+    pump_frequency_ = new_pump_frequency;
     pump_frequency_sensor_->publish_state(pump_frequency_);
   }
   
@@ -304,6 +338,110 @@ void VevorHeater::update_sensors(const std::vector<uint8_t> &frame) {
   if (fan_speed_sensor_ && frame.size() > 29) {
     fan_speed_ = read_uint16_be(frame, 28);
     fan_speed_sensor_->publish_state(fan_speed_);
+  }
+}
+
+void VevorHeater::update_fuel_consumption(float pump_frequency) {
+  uint32_t current_time = millis();
+  uint32_t time_delta = current_time - last_consumption_update_;
+  
+  // Only update if the heater is in a state where fuel is being consumed
+  if (current_state_ == HeaterState::STABLE_COMBUSTION || 
+      current_state_ == HeaterState::HEATING_UP) {
+    
+    // If pump frequency > 0, fuel is being injected
+    if (pump_frequency > 0.0f && time_delta > 0) {
+      // Calculate fuel consumption based on pump frequency and time
+      // pump_frequency is in Hz (pulses per second)
+      float time_seconds = time_delta / 1000.0f;
+      float pulses = pump_frequency * time_seconds;
+      float consumed_ml = pulses * injected_per_pulse_;
+      
+      // Update counters
+      daily_consumption_ml_ += consumed_ml;
+      hourly_data_.consumption_in_hour += consumed_ml;
+      total_fuel_pulses_ += static_cast<uint32_t>(pulses);
+      
+      ESP_LOGVV(TAG, "Fuel consumption: %.2f ml/h current, %.2f ml total daily", 
+                hourly_data_.consumption_in_hour, daily_consumption_ml_);
+      
+      // Update daily consumption sensor
+      if (daily_consumption_sensor_) {
+        daily_consumption_sensor_->publish_state(daily_consumption_ml_);
+      }
+      
+      // Save data periodically (every 30 seconds to reduce flash wear)
+      static uint32_t last_save = 0;
+      if (current_time - last_save > 30000) {
+        save_fuel_consumption_data();
+        last_save = current_time;
+      }
+    }
+  }
+  
+  last_pump_frequency_ = pump_frequency;
+  last_consumption_update_ = current_time;
+}
+
+void VevorHeater::check_daily_reset() {
+  uint32_t today = get_days_since_epoch();
+  if (today != current_day_) {
+    ESP_LOGI(TAG, "New day detected, resetting daily consumption counter");
+    current_day_ = today;
+    daily_consumption_ml_ = 0.0f;
+    save_fuel_consumption_data();
+    
+    if (daily_consumption_sensor_) {
+      daily_consumption_sensor_->publish_state(daily_consumption_ml_);
+    }
+  }
+}
+
+uint32_t VevorHeater::get_days_since_epoch() {
+  return millis() / (24 * 60 * 60 * 1000UL);
+}
+
+void VevorHeater::save_fuel_consumption_data() {
+  FuelConsumptionData data;
+  data.daily_consumption_ml = daily_consumption_ml_;
+  data.last_reset_day = current_day_;
+  data.total_pulses = total_fuel_pulses_;
+  
+  if (pref_fuel_consumption_.save(&data)) {
+    ESP_LOGD(TAG, "Fuel consumption data saved: %.2f ml, day %d", 
+             data.daily_consumption_ml, data.last_reset_day);
+  } else {
+    ESP_LOGW(TAG, "Failed to save fuel consumption data");
+  }
+}
+
+void VevorHeater::load_fuel_consumption_data() {
+  FuelConsumptionData data;
+  if (pref_fuel_consumption_.load(&data)) {
+    // Check if it's the same day
+    uint32_t today = get_days_since_epoch();
+    if (data.last_reset_day == today) {
+      daily_consumption_ml_ = data.daily_consumption_ml;
+      ESP_LOGI(TAG, "Loaded fuel consumption data: %.2f ml for today", daily_consumption_ml_);
+    } else {
+      daily_consumption_ml_ = 0.0f;
+      ESP_LOGI(TAG, "New day detected, starting with 0 ml consumption");
+    }
+    total_fuel_pulses_ = data.total_pulses;
+  } else {
+    ESP_LOGI(TAG, "No fuel consumption data found, starting fresh");
+    daily_consumption_ml_ = 0.0f;
+    total_fuel_pulses_ = 0;
+  }
+}
+
+void VevorHeater::reset_daily_consumption() {
+  ESP_LOGI(TAG, "Manual reset of daily consumption counter");
+  daily_consumption_ml_ = 0.0f;
+  save_fuel_consumption_data();
+  
+  if (daily_consumption_sensor_) {
+    daily_consumption_sensor_->publish_state(daily_consumption_ml_);
   }
 }
 
@@ -387,6 +525,9 @@ void VevorHeater::dump_config() {
   ESP_LOGCONFIG(TAG, "  Default Power Level: %.0f%%", default_power_percent_);
   ESP_LOGCONFIG(TAG, "  Power Level: %d/10", power_level_);
   ESP_LOGCONFIG(TAG, "  Target Temperature: %.1f°C", target_temperature_);
+  ESP_LOGCONFIG(TAG, "  Injected per Pulse: %.2f ml", injected_per_pulse_);
+  ESP_LOGCONFIG(TAG, "  Daily Consumption: %.2f ml", daily_consumption_ml_);
+  ESP_LOGCONFIG(TAG, "  Total Fuel Pulses: %d", total_fuel_pulses_);
   
   if (external_temperature_sensor_ != nullptr) {
     ESP_LOGCONFIG(TAG, "  External Temperature Sensor: Configured");
@@ -412,6 +553,8 @@ void VevorHeater::dump_config() {
   LOG_SENSOR("  ", "Heat Exchanger Temperature", heat_exchanger_temperature_sensor_);
   LOG_SENSOR("  ", "State Duration", state_duration_sensor_);
   LOG_BINARY_SENSOR("  ", "Cooling Down", cooling_down_sensor_);
+  LOG_SENSOR("  ", "Hourly Consumption", hourly_consumption_sensor_);
+  LOG_SENSOR("  ", "Daily Consumption", daily_consumption_sensor_);
 }
 
 // VevorClimate implementation
