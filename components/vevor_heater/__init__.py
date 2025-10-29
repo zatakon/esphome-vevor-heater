@@ -45,8 +45,7 @@ CONF_EXTERNAL_TEMPERATURE_SENSOR = "external_temperature_sensor"
 CONTROL_MODE_MANUAL = "manual"
 CONTROL_MODE_AUTOMATIC = "automatic"
 
-# Sensor configuration keys
-CONF_TEMPERATURE = "temperature"
+# Sensor configuration keys - removed CONF_TEMPERATURE (duplicate)
 CONF_INPUT_VOLTAGE = "input_voltage"
 CONF_STATE = "state"
 CONF_POWER_LEVEL = "power_level"
@@ -57,15 +56,8 @@ CONF_HEAT_EXCHANGER_TEMPERATURE = "heat_exchanger_temperature"
 CONF_STATE_DURATION = "state_duration"
 CONF_COOLING_DOWN = "cooling_down"
 
-# Simplified sensor schemas with good defaults
+# Simplified sensor schemas with good defaults - removed duplicate temperature sensor
 SENSOR_SCHEMAS = {
-    CONF_TEMPERATURE: sensor.sensor_schema(
-        unit_of_measurement=UNIT_CELSIUS,
-        device_class=DEVICE_CLASS_TEMPERATURE,
-        state_class=STATE_CLASS_MEASUREMENT,
-        accuracy_decimals=1,
-        icon=ICON_THERMOMETER,
-    ),
     CONF_INPUT_VOLTAGE: sensor.sensor_schema(
         unit_of_measurement=UNIT_VOLT,
         device_class=DEVICE_CLASS_VOLTAGE,
@@ -140,8 +132,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_MAX_TEMPERATURE, default=35.0): cv.float_range(
                 min=10.0, max=50.0
             ),
-            # Individual sensor overrides (optional)
-            cv.Optional(CONF_TEMPERATURE): SENSOR_SCHEMAS[CONF_TEMPERATURE],
+            # Individual sensor overrides (optional) - removed duplicate temperature sensor
             cv.Optional(CONF_INPUT_VOLTAGE): SENSOR_SCHEMAS[CONF_INPUT_VOLTAGE],
             cv.Optional(CONF_STATE): SENSOR_SCHEMAS[CONF_STATE],
             cv.Optional(CONF_POWER_LEVEL): SENSOR_SCHEMAS[CONF_POWER_LEVEL],
@@ -185,7 +176,7 @@ async def to_code(config):
     # Auto-create sensors if enabled
     if config[CONF_AUTO_SENSORS]:
         sensors_to_create = [
-            (CONF_TEMPERATURE, "set_temperature_sensor"),
+            # Removed duplicate (CONF_TEMPERATURE, "set_temperature_sensor"),
             (CONF_INPUT_VOLTAGE, "set_input_voltage_sensor"),
             (CONF_POWER_LEVEL, "set_power_level_sensor"),
             (CONF_FAN_SPEED, "set_fan_speed_sensor"),
@@ -250,7 +241,7 @@ async def to_code(config):
     else:
         # Manual sensor configuration
         sensor_configs = [
-            (CONF_TEMPERATURE, "set_temperature_sensor", sensor.new_sensor),
+            # Removed duplicate (CONF_TEMPERATURE, "set_temperature_sensor", sensor.new_sensor),
             (CONF_INPUT_VOLTAGE, "set_input_voltage_sensor", sensor.new_sensor),
             (CONF_POWER_LEVEL, "set_power_level_sensor", sensor.new_sensor),
             (CONF_FAN_SPEED, "set_fan_speed_sensor", sensor.new_sensor),
