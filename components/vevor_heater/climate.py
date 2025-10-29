@@ -12,6 +12,10 @@ VevorClimate = vevor_heater_ns.class_("VevorClimate", climate.Climate, cg.Compon
 CONF_VEVOR_HEATER_ID = "vevor_heater_id"
 CONF_MIN_TEMPERATURE = "min_temperature"
 CONF_MAX_TEMPERATURE = "max_temperature"
+CONF_POWER_CONTROL = "power_control"
+CONF_TEMPERATURE_STEP = "temperature_step"
+CONF_SUPPORTS_PRESETS = "supports_presets"
+CONF_DEFAULT_PRESET = "default_preset"
 
 CONFIG_SCHEMA = climate.CLIMATE_SCHEMA.extend(
     {
@@ -19,6 +23,10 @@ CONFIG_SCHEMA = climate.CLIMATE_SCHEMA.extend(
         cv.Required(CONF_VEVOR_HEATER_ID): cv.use_id(VevorHeater),
         cv.Optional(CONF_MIN_TEMPERATURE, default=5.0): cv.float_range(min=0, max=30),
         cv.Optional(CONF_MAX_TEMPERATURE, default=35.0): cv.float_range(min=10, max=50),
+        cv.Optional(CONF_POWER_CONTROL, default=True): cv.boolean,
+        cv.Optional(CONF_TEMPERATURE_STEP, default=1.0): cv.float_range(min=0.1, max=5.0),
+        cv.Optional(CONF_SUPPORTS_PRESETS, default=True): cv.boolean,
+        cv.Optional(CONF_DEFAULT_PRESET, default="Normal"): cv.string,
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -33,3 +41,7 @@ async def to_code(config):
     
     cg.add(var.set_min_temperature(config[CONF_MIN_TEMPERATURE]))
     cg.add(var.set_max_temperature(config[CONF_MAX_TEMPERATURE]))
+    cg.add(var.set_temperature_step(config[CONF_TEMPERATURE_STEP]))
+    cg.add(var.set_power_control_enabled(config[CONF_POWER_CONTROL]))
+    cg.add(var.set_supports_presets(config[CONF_SUPPORTS_PRESETS]))
+    cg.add(var.set_default_preset(config[CONF_DEFAULT_PRESET]))
