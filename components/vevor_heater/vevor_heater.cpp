@@ -274,17 +274,14 @@ void VevorHeater::update_sensors(const std::vector<uint8_t> &frame) {
     cooling_down_sensor_->publish_state(cooling_down_);
   }
   
-  // Heat exchanger temperature (bytes 16-17)
+  // Heat exchanger temperature (bytes 16-17) - FIXED: divide by 10 instead of 100
   if (heat_exchanger_temperature_sensor_ && frame.size() > 17) {
     uint16_t temp_raw = read_uint16_be(frame, 16);
-    heat_exchanger_temperature_ = temp_raw / 100.0f;
+    heat_exchanger_temperature_ = temp_raw / 10.0f; // Fixed: was temp_raw / 100.0f
     heat_exchanger_temperature_sensor_->publish_state(heat_exchanger_temperature_);
     
-    // Use heat exchanger as main temperature if no dedicated sensor
-    if (temperature_sensor_) {
-      current_temperature_ = heat_exchanger_temperature_;
-      temperature_sensor_->publish_state(current_temperature_);
-    }
+    // Update current temperature for climate control (no duplicate temperature sensor)
+    current_temperature_ = heat_exchanger_temperature_;
   }
   
   // State duration (bytes 20-21)
@@ -402,7 +399,7 @@ void VevorHeater::dump_config() {
     }
   }
   
-  LOG_SENSOR("  ", "Temperature", temperature_sensor_);
+  // Removed LOG_SENSOR for the duplicate temperature_sensor_
   LOG_SENSOR("  ", "Input Voltage", input_voltage_sensor_);
   LOG_TEXT_SENSOR("  ", "State", state_sensor_);
   LOG_SENSOR("  ", "Power Level", power_level_sensor_);
