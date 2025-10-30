@@ -2,8 +2,9 @@ substitutions:
   id_name: rnw_esphm_c3_01_workshop_heater
   friendly_name: esp32c3-workshop-heater
 
+# Add the library
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.2.1
+  - source: github://zatakon/esphome-vevor-heater@develop
     components: [vevor_heater]
 
 esphome:
@@ -11,7 +12,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "zatakon.vevor-heater"
-    version: "1.2.1"  
+    version: "1.2.0"  # Library version with daily consumption fix
 
 esp32:
   board: esp32-c3-devkitm-1
