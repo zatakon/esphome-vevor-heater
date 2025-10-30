@@ -429,6 +429,11 @@ void VevorHeater::load_fuel_consumption_data() {
     daily_consumption_ml_ = 0.0f;
     total_fuel_pulses_ = 0;
   }
+  
+  // Publish initial value to sensor so it's not "unknown"
+  if (daily_consumption_sensor_) {
+    daily_consumption_sensor_->publish_state(daily_consumption_ml_);
+  }
 }
 
 void VevorHeater::reset_daily_consumption() {
