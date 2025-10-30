@@ -6,8 +6,8 @@ esphome:
   name: ${friendly_name}
   friendly_name: ${friendly_name}
   project:
-    name: "vevor.diesel-heater"
-    version: "2.0.0"
+    name: "zatakon.vevor-heater"
+    version: "1.2.0"  # Library version with daily consumption fix
 
 esp32:
   board: esp32-c3-devkitm-1
