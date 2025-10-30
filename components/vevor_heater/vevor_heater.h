@@ -8,6 +8,7 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
+#include "esphome/components/number/number.h"
 #include "esphome/core/preferences.h"
 #include <vector>
 
@@ -17,7 +18,7 @@ namespace vevor_heater {
 static const char *const TAG = "vevor_heater";
 
 // Fuel consumption constants
-static const float INJECTED_PER_PULSE = 0.22f; // ml per fuel pump pulse
+static const float INJECTED_PER_PULSE = 0.022f; // ml per fuel pump pulse
 
 // Control modes
 enum class ControlMode : uint8_t {
@@ -55,7 +56,7 @@ static const uint32_t SEND_INTERVAL_MS = 1000;
 struct FuelConsumptionData {
   float daily_consumption_ml;
   uint32_t last_reset_day;
-  uint32_t total_pulses;
+  float total_pulses;  // Keep as float to avoid precision loss
 };
 
 class VevorHeater : public PollingComponent, public uart::UARTDevice {
@@ -68,6 +69,10 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_control_mode(ControlMode mode) { control_mode_ = mode; }
   void set_default_power_percent(float percent) { default_power_percent_ = percent; }
   void set_injected_per_pulse(float ml_per_pulse) { injected_per_pulse_ = ml_per_pulse; }
+  float get_injected_per_pulse() const { return injected_per_pulse_; }
+  
+  // Number component setter
+  void set_injected_per_pulse_number(number::Number *num) { injected_per_pulse_number_ = num; }
   
   // External temperature sensor
   void set_external_temperature_sensor(sensor::Sensor *sensor) { external_temperature_sensor_ = sensor; }
@@ -112,8 +117,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   bool is_connected() const { return last_received_time_ + COMMUNICATION_TIMEOUT_MS > millis(); }
   
   // Fuel consumption getters
-  float get_hourly_consumption() const { return hourly_consumption_ml_; }
   float get_daily_consumption() const { return daily_consumption_ml_; }
+  float get_instantaneous_consumption_rate() const { return pump_frequency_ * injected_per_pulse_ * 3600.0f; }
   
   // Component lifecycle
   void setup() override;
@@ -174,17 +179,10 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   // Fuel consumption tracking
   float last_pump_frequency_{0.0};
   uint32_t last_consumption_update_{0};
-  float hourly_consumption_ml_{0.0};
   float daily_consumption_ml_{0.0};
   uint32_t current_day_{0};
-  uint32_t total_fuel_pulses_{0};
+  float total_fuel_pulses_{0.0};  // Keep as float to avoid precision loss
   ESPPreferenceObject pref_fuel_consumption_;
-  
-  // Hourly consumption tracking
-  struct HourlyData {
-    uint32_t hour_start_time;
-    float consumption_in_hour;
-  } hourly_data_;
   
   // Sensor pointers
   sensor::Sensor *temperature_sensor_{nullptr};
@@ -200,6 +198,30 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   binary_sensor::BinarySensor *cooling_down_sensor_{nullptr};
   sensor::Sensor *hourly_consumption_sensor_{nullptr};
   sensor::Sensor *daily_consumption_sensor_{nullptr};
+  number::Number *injected_per_pulse_number_{nullptr};
+};
+
+// Number component for injected per pulse configuration
+class VevorInjectedPerPulseNumber : public number::Number, public Component {
+ public:
+  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
+  
+  void setup() override {
+    if (heater_) {
+      float value = heater_->get_injected_per_pulse();
+      this->publish_state(value);
+    }
+  }
+  
+ protected:
+  void control(float value) override {
+    if (heater_) {
+      heater_->set_injected_per_pulse(value);
+      this->publish_state(value);
+    }
+  }
+  
+  VevorHeater *heater_{nullptr};
 };
 
 // Climate integration class
