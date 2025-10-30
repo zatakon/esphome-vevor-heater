@@ -67,6 +67,7 @@ vevor_heater:
   uart_id: heater_serial
   control_mode: manual           # Manual mode - heater runs at set power level
   default_power_percent: 80      # Default 80% power when turned on
+  injected_per_pulse: 0.022      # Initial value (in ml)
 
 # Manual heater controls (switches and sliders)
 switch:
