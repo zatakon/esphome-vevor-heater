@@ -24,12 +24,13 @@ from esphome.const import (
     ICON_POWER,
 )
 
-AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "climate"]
+AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "climate", "number"]
 DEPENDENCIES = ["uart"]
 
 vevor_heater_ns = cg.esphome_ns.namespace("vevor_heater")
 VevorHeater = vevor_heater_ns.class_("VevorHeater", cg.PollingComponent)
 VevorClimate = vevor_heater_ns.class_("VevorClimate", climate.Climate, cg.Component)
+VevorInjectedPerPulseNumber = vevor_heater_ns.class_("VevorInjectedPerPulseNumber", number.Number, cg.Component)
 
 # Configuration keys
 CONF_AUTO_SENSORS = "auto_sensors"
@@ -42,6 +43,7 @@ CONF_CONTROL_MODE = "control_mode"
 CONF_DEFAULT_POWER_PERCENT = "default_power_percent"
 CONF_EXTERNAL_TEMPERATURE_SENSOR = "external_temperature_sensor"
 CONF_INJECTED_PER_PULSE = "injected_per_pulse"
+CONF_INJECTED_PER_PULSE_NUMBER = "injected_per_pulse_number"
 
 # Control mode options
 CONTROL_MODE_MANUAL = "manual"
@@ -150,8 +152,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_DEFAULT_POWER_PERCENT, default=80.0): cv.float_range(
                 min=10.0, max=100.0
             ),
-            cv.Optional(CONF_INJECTED_PER_PULSE, default=0.22): cv.float_range(
-                min=0.01, max=10.0
+            cv.Optional(CONF_INJECTED_PER_PULSE, default=0.022): cv.float_range(
+                min=0.001, max=1.0
             ),
             cv.Optional(CONF_EXTERNAL_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
             cv.Optional(CONF_TARGET_TEMPERATURE, default=20.0): cv.float_range(
@@ -178,6 +180,17 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_COOLING_DOWN): SENSOR_SCHEMAS[CONF_COOLING_DOWN],
             cv.Optional(CONF_HOURLY_CONSUMPTION): SENSOR_SCHEMAS[CONF_HOURLY_CONSUMPTION],
             cv.Optional(CONF_DAILY_CONSUMPTION): SENSOR_SCHEMAS[CONF_DAILY_CONSUMPTION],
+            # Number component for injected per pulse
+            cv.Optional(CONF_INJECTED_PER_PULSE_NUMBER): number.number_schema(
+                VevorInjectedPerPulseNumber,
+                unit_of_measurement=UNIT_MILLILITERS,
+                icon="mdi:eyedropper",
+                entity_category="config",
+            ).extend({
+                cv.Optional("min_value", default=0.001): cv.float_,
+                cv.Optional("max_value", default=1.0): cv.float_,
+                cv.Optional("step", default=0.001): cv.float_,
+            }),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -298,6 +311,13 @@ async def to_code(config):
             if sensor_key in config:
                 sens = await new_sensor_func(config[sensor_key])
                 cg.add(getattr(var, setter_method)(sens))
+
+    # Number component for injected per pulse
+    if CONF_INJECTED_PER_PULSE_NUMBER in config:
+        num_config = config[CONF_INJECTED_PER_PULSE_NUMBER]
+        num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
+        cg.add(num.set_vevor_heater(var))
+        cg.add(var.set_injected_per_pulse_number(num))
 
     # Climate mode setup
     if config[CONF_CLIMATE_MODE]:

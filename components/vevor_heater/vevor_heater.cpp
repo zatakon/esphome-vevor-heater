@@ -39,13 +39,16 @@ void VevorHeater::setup() {
   
   // Initialize fuel consumption tracking
   this->last_consumption_update_ = millis();
-  this->hourly_data_.hour_start_time = millis();
-  this->hourly_data_.consumption_in_hour = 0.0f;
   this->current_day_ = get_days_since_epoch();
   
   // Setup persistent storage for fuel consumption
   this->pref_fuel_consumption_ = global_preferences->make_preference<FuelConsumptionData>(fnv1_hash("fuel_consumption"));
   load_fuel_consumption_data();
+  
+  // Initialize hourly consumption sensor with initial value
+  if (hourly_consumption_sensor_) {
+    hourly_consumption_sensor_->publish_state(0.0f);
+  }
   
   ESP_LOGCONFIG(TAG, "Vevor Heater setup completed");
   ESP_LOGCONFIG(TAG, "Control mode: %s", control_mode_ == ControlMode::AUTOMATIC ? "Automatic" : "Manual");
@@ -85,17 +88,11 @@ void VevorHeater::update() {
     }
   }
   
-  // Update hourly consumption every hour
-  uint32_t current_time = millis();
-  if (current_time - hourly_data_.hour_start_time >= 3600000) { // 1 hour = 3600000 ms
-    if (hourly_consumption_sensor_) {
-      hourly_consumption_sensor_->publish_state(hourly_data_.consumption_in_hour);
-    }
-    hourly_consumption_ml_ = hourly_data_.consumption_in_hour;
-    
-    // Reset for next hour
-    hourly_data_.hour_start_time = current_time;
-    hourly_data_.consumption_in_hour = 0.0f;
+  // Update instantaneous hourly consumption rate (ml/h) based on current pump frequency
+  if (hourly_consumption_sensor_) {
+    // Calculate instantaneous consumption rate: Hz * ml/pulse * 3600 seconds/hour
+    float instantaneous_consumption_ml_per_hour = pump_frequency_ * injected_per_pulse_ * 3600.0f;
+    hourly_consumption_sensor_->publish_state(instantaneous_consumption_ml_per_hour);
   }
 }
 
@@ -357,13 +354,15 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
       float pulses = pump_frequency * time_seconds;
       float consumed_ml = pulses * injected_per_pulse_;
       
-      // Update counters
+      // Update daily consumption counter
       daily_consumption_ml_ += consumed_ml;
-      hourly_data_.consumption_in_hour += consumed_ml;
-      total_fuel_pulses_ += static_cast<uint32_t>(pulses);
+      total_fuel_pulses_ += pulses;  // Keep as float for precision
       
-      ESP_LOGVV(TAG, "Fuel consumption: %.2f ml/h current, %.2f ml total daily", 
-                hourly_data_.consumption_in_hour, daily_consumption_ml_);
+      // Calculate instantaneous consumption rate for logging
+      float instantaneous_ml_per_hour = pump_frequency * injected_per_pulse_ * 3600.0f;
+      
+      ESP_LOGVV(TAG, "Fuel consumption rate: %.2f ml/h, total daily: %.2f ml", 
+                instantaneous_ml_per_hour, daily_consumption_ml_);
       
       // Update daily consumption sensor
       if (daily_consumption_sensor_) {
@@ -527,7 +526,7 @@ void VevorHeater::dump_config() {
   ESP_LOGCONFIG(TAG, "  Target Temperature: %.1f°C", target_temperature_);
   ESP_LOGCONFIG(TAG, "  Injected per Pulse: %.2f ml", injected_per_pulse_);
   ESP_LOGCONFIG(TAG, "  Daily Consumption: %.2f ml", daily_consumption_ml_);
-  ESP_LOGCONFIG(TAG, "  Total Fuel Pulses: %d", total_fuel_pulses_);
+  ESP_LOGCONFIG(TAG, "  Total Fuel Pulses: %.1f", total_fuel_pulses_);
   
   if (external_temperature_sensor_ != nullptr) {
     ESP_LOGCONFIG(TAG, "  External Temperature Sensor: Configured");
