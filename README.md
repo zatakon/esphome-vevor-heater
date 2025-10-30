@@ -60,6 +60,32 @@ Feel free to use any pin for TX and RX. \
 
 Refer to the original project's [hardware documentation](https://github.com/zatakon/vevor_heater_control#4-hardware) for more informations.
 
+## Versioning
+
+This library uses semantic versioning. The version is embedded in your ESPHome device configuration:
+
+```yaml
+esphome:
+  name: ${friendly_name}
+  project:
+    name: "zatakon.vevor-heater"
+    version: "1.2.0"  # Current library version
+```
+
+The version number appears in:
+- Home Assistant device information
+- ESPHome dashboard
+- Device logs
+
+**Current Version: 1.2.0** - Daily consumption sensor fix
+
+To pin a specific library version:
+```yaml
+external_components:
+  - source: github://zatakon/esphome-vevor-heater@v1.2.0
+    components: [vevor_heater]
+```
+
 ## Quick Start
 
 ### 1. Add to ESPHome Configuration
@@ -459,11 +485,6 @@ MIT License - see LICENSE file for details.
 - Based on protocol reverse-engineering in my [other](https://github.com/zatakon) repo
 - Inspired by the ESPHome community
 - Thanks to all contributors and testers
-
-## Recent Fixes
-### Temperature Sensor Issues Fixed (v1.1)
-- **Removed duplicate Temperature sensor**: Only "Heat Exchanger Temperature" sensor is now created
-- **Fixed temperature scaling**: Temperature values are now correctly scaled (was 10x too small)
 
 ## Support the Project
 
