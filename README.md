@@ -185,7 +185,7 @@ When `auto_sensors: true` (default), these sensors are automatically created:
 
 | Sensor                       | Description                   | Unit | Device Class |
 |------------------------------|-------------------------------|------|--------------|
-| Temperature                  | Heat exchanger temperature    | °C   | Temperature  |
+| Heat Exchanger Temperature   | Main heater temperature       | °C   | Temperature  |
 | Input Voltage                | Heater input voltage          | V    | Voltage      |
 | State                        | Current heater state          | -    | -            |
 | Power Level                  | Current power level           | %    | Power        |
@@ -434,7 +434,12 @@ MIT License - see LICENSE file for details.
 - Inspired by the ESPHome community
 - Thanks to all contributors and testers
 
-## Support
+## Recent Fixes
+### Temperature Sensor Issues Fixed (v1.1)
+- **Removed duplicate Temperature sensor**: Only "Heat Exchanger Temperature" sensor is now created
+- **Fixed temperature scaling**: Temperature values are now correctly scaled (was 10x too small)
+
+## Support the Project
 
 For issues and questions:
 1. Check existing [GitHub Issues](https://github.com/zatakon/esphome-vevor-heater/issues)
@@ -443,10 +448,6 @@ For issues and questions:
    - Debug logs
    - Hardware setup details
 3. Join the discussion in the ESPHome community
-
----
-
-## Support the Project
 
 If you find this library helpful and want to support its development, consider buying me a coffee! ☕
 
