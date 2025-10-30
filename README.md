@@ -69,7 +69,7 @@ esphome:
   name: ${friendly_name}
   project:
     name: "zatakon.vevor-heater"
-    version: "1.2.0"  # Current library version
+    version: "1.2.1"  # Current library version
 ```
 
 The version number appears in:
@@ -79,10 +79,26 @@ The version number appears in:
 
 **Current Version: 1.2.0** - Daily consumption sensor fix
 
-To pin a specific library version:
+### Using Different Versions
+
+**Latest stable release (recommended):**
 ```yaml
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.2.0
+  - source: github://zatakon/esphome-vevor-heater
+    components: [vevor_heater]
+```
+
+**Specific version (for stability):**
+```yaml
+external_components:
+  - source: github://zatakon/esphome-vevor-heater@v1.2.1
+    components: [vevor_heater]
+```
+
+**Development branch (latest features, may be unstable):**
+```yaml
+external_components:
+  - source: github://zatakon/esphome-vevor-heater@develop
     components: [vevor_heater]
 ```
 

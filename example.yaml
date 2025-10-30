@@ -2,12 +2,16 @@ substitutions:
   id_name: rnw_esphm_c3_01_workshop_heater
   friendly_name: esp32c3-workshop-heater
 
+external_components:
+  - source: github://zatakon/esphome-vevor-heater@v1.2.1
+    components: [vevor_heater]
+
 esphome:
   name: ${friendly_name}
   friendly_name: ${friendly_name}
   project:
     name: "zatakon.vevor-heater"
-    version: "1.2.0"  # Library version with daily consumption fix
+    version: "1.2.1"  
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -43,11 +47,6 @@ captive_portal:
 web_server:
   local: True
   port: 80
-
-# Add the library
-external_components:
-  - source: github://zatakon/esphome-vevor-heater
-    components: [vevor_heater]
 
 # UART configuration for Vevor heater
 uart:
