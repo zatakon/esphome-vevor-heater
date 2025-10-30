@@ -195,6 +195,32 @@ When `auto_sensors: true` (default), these sensors are automatically created:
 | Heat Exchanger Temperature   | Detailed heat exchanger temp  | °C   | Temperature  |
 | State Duration               | Time in current state         | s    | Duration     |
 | Cooling Down                 | Cooling down status           | -    | -            |
+| Hourly Consumption           | Instantaneous fuel rate       | ml/h | -            |
+| Daily Consumption            | Total fuel consumed today     | ml   | -            |
+
+### Fuel Consumption Tracking
+
+The library includes accurate fuel consumption monitoring:
+
+- **Hourly Consumption**: Shows instantaneous fuel consumption rate (ml/h) based on current pump frequency
+- **Daily Consumption**: Accumulates total fuel consumed since midnight, persists across reboots
+- **Configurable Calibration**: Default 0.022 ml per pump pulse, adjustable via configuration or HA number entity
+
+```yaml
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  injected_per_pulse: 0.022  # Adjust based on your heater model
+  
+  # Optional: Expose as adjustable number in Home Assistant
+  injected_per_pulse_number:
+    name: "Fuel Injected Per Pulse"
+    min_value: 0.001
+    max_value: 1.0
+    step: 0.001
+```
+
+The fuel counter automatically resets daily at midnight and saves data to flash memory to survive reboots.
 
 ## Configuration Options
 

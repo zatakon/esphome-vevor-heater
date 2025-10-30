@@ -8,12 +8,17 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
+#include "esphome/components/number/number.h"
+#include "esphome/core/preferences.h"
 #include <vector>
 
 namespace esphome {
 namespace vevor_heater {
 
 static const char *const TAG = "vevor_heater";
+
+// Fuel consumption constants
+static const float INJECTED_PER_PULSE = 0.022f; // ml per fuel pump pulse
 
 // Control modes
 enum class ControlMode : uint8_t {
@@ -47,6 +52,13 @@ static const uint8_t HEATER_FRAME_LENGTH = 0x33;
 static const uint32_t COMMUNICATION_TIMEOUT_MS = 5000;
 static const uint32_t SEND_INTERVAL_MS = 1000;
 
+// Fuel consumption tracking structure for persistence
+struct FuelConsumptionData {
+  float daily_consumption_ml;
+  uint32_t last_reset_day;
+  float total_pulses;  // Keep as float to avoid precision loss
+};
+
 class VevorHeater : public PollingComponent, public uart::UARTDevice {
  public:
   // Configuration methods
@@ -56,6 +68,11 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   }
   void set_control_mode(ControlMode mode) { control_mode_ = mode; }
   void set_default_power_percent(float percent) { default_power_percent_ = percent; }
+  void set_injected_per_pulse(float ml_per_pulse) { injected_per_pulse_ = ml_per_pulse; }
+  float get_injected_per_pulse() const { return injected_per_pulse_; }
+  
+  // Number component setter
+  void set_injected_per_pulse_number(number::Number *num) { injected_per_pulse_number_ = num; }
   
   // External temperature sensor
   void set_external_temperature_sensor(sensor::Sensor *sensor) { external_temperature_sensor_ = sensor; }
@@ -70,11 +87,14 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_heat_exchanger_temperature_sensor(sensor::Sensor *sensor) { heat_exchanger_temperature_sensor_ = sensor; }
   void set_state_duration_sensor(sensor::Sensor *sensor) { state_duration_sensor_ = sensor; }
   void set_cooling_down_sensor(binary_sensor::BinarySensor *sensor) { cooling_down_sensor_ = sensor; }
+  void set_hourly_consumption_sensor(sensor::Sensor *sensor) { hourly_consumption_sensor_ = sensor; }
+  void set_daily_consumption_sensor(sensor::Sensor *sensor) { daily_consumption_sensor_ = sensor; }
   
   // Control methods
   void turn_on();
   void turn_off();
   void set_power_level_percent(float percent);
+  void reset_daily_consumption();
   
   // Control mode management
   bool is_automatic_mode() const { return control_mode_ == ControlMode::AUTOMATIC; }
@@ -94,6 +114,10 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
            current_state_ == HeaterState::STABLE_COMBUSTION; 
   }
   bool is_connected() const { return last_received_time_ + COMMUNICATION_TIMEOUT_MS > millis(); }
+  
+  // Fuel consumption getters
+  float get_daily_consumption() const { return daily_consumption_ml_; }
+  float get_instantaneous_consumption_rate() const { return pump_frequency_ * injected_per_pulse_ * 3600.0f; }
   
   // Component lifecycle
   void setup() override;
@@ -118,6 +142,13 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void update_sensors(const std::vector<uint8_t> &frame);
   void handle_communication_timeout();
   
+  // Fuel consumption tracking
+  void update_fuel_consumption(float pump_frequency);
+  void save_fuel_consumption_data();
+  void load_fuel_consumption_data();
+  void check_daily_reset();
+  uint32_t get_days_since_epoch();
+  
   // Communication state
   std::vector<uint8_t> rx_buffer_;
   uint32_t last_received_time_{0};
@@ -131,6 +162,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   HeaterState current_state_{HeaterState::OFF};
   ControlMode control_mode_{ControlMode::MANUAL};
   float default_power_percent_{80.0};
+  float injected_per_pulse_{INJECTED_PER_PULSE};
   
   // Parsed sensor values
   float current_temperature_{0.0};
@@ -143,6 +175,14 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   uint16_t state_duration_{0};
   bool cooling_down_{false};
   
+  // Fuel consumption tracking
+  float last_pump_frequency_{0.0};
+  uint32_t last_consumption_update_{0};
+  float daily_consumption_ml_{0.0};
+  uint32_t current_day_{0};
+  float total_fuel_pulses_{0.0};  // Keep as float to avoid precision loss
+  ESPPreferenceObject pref_fuel_consumption_;
+  
   // Sensor pointers - removed duplicate temperature_sensor_
   sensor::Sensor *external_temperature_sensor_{nullptr};
   sensor::Sensor *input_voltage_sensor_{nullptr};
@@ -154,6 +194,32 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   sensor::Sensor *heat_exchanger_temperature_sensor_{nullptr};
   sensor::Sensor *state_duration_sensor_{nullptr};
   binary_sensor::BinarySensor *cooling_down_sensor_{nullptr};
+  sensor::Sensor *hourly_consumption_sensor_{nullptr};
+  sensor::Sensor *daily_consumption_sensor_{nullptr};
+  number::Number *injected_per_pulse_number_{nullptr};
+};
+
+// Number component for injected per pulse configuration
+class VevorInjectedPerPulseNumber : public number::Number, public Component {
+ public:
+  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
+  
+  void setup() override {
+    if (heater_) {
+      float value = heater_->get_injected_per_pulse();
+      this->publish_state(value);
+    }
+  }
+  
+ protected:
+  void control(float value) override {
+    if (heater_) {
+      heater_->set_injected_per_pulse(value);
+      this->publish_state(value);
+    }
+  }
+  
+  VevorHeater *heater_{nullptr};
 };
 
 // Climate integration class
@@ -199,6 +265,15 @@ template<typename... Ts> class HeaterSetPowerAction : public Action<Ts...> {
   explicit HeaterSetPowerAction(VevorHeater *heater) : heater_(heater) {}
   TEMPLATABLE_VALUE(float, power_level)
   void play(Ts... x) override { heater_->set_power_level_percent(this->power_level_.value(x...)); }
+  
+ protected:
+  VevorHeater *heater_;
+};
+
+template<typename... Ts> class HeaterResetDailyConsumptionAction : public Action<Ts...> {
+ public:
+  explicit HeaterResetDailyConsumptionAction(VevorHeater *heater) : heater_(heater) {}
+  void play(Ts... x) override { heater_->reset_daily_consumption(); }
   
  protected:
   VevorHeater *heater_;
