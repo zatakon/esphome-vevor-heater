@@ -66,15 +66,14 @@ void VevorHeater::update() {
   // Check for daily reset
   check_daily_reset();
   
-  // Check for incoming data
+  // Always check for incoming data, regardless of state
   check_uart_data();
   
-  // Only send frames and handle timeouts if heater is enabled or needs to stop
-  bool should_communicate = heater_enabled_ || 
-                           (current_state_ != HeaterState::OFF && 
-                            current_state_ != HeaterState::STOPPING_COOLING);
+  // Determine if we should send frames
+  // Send frames if heater is enabled OR if we're in any non-OFF state (including cooldown)
+  bool should_send_frames = heater_enabled_ || (current_state_ != HeaterState::OFF);
   
-  if (should_communicate) {
+  if (should_send_frames) {
     // Handle communication timeout
     if (!is_connected()) {
       handle_communication_timeout();
