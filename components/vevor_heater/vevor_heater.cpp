@@ -394,9 +394,9 @@ void VevorHeater::check_daily_reset() {
 }
 
 uint32_t VevorHeater::get_days_since_epoch() {
-  // Use ESPHome's time API to get actual calendar day
-  auto time = time::RealTimeClock::utcnow();
-  if (!time.is_valid()) {
+  // Use system time to get actual calendar day
+  std::time_t now = std::time(nullptr);
+  if (now < 1609459200) {  // If time is before 2021-01-01, it's not synced yet
     // If time is not synced yet, fall back to millis-based calculation
     // This ensures we don't reset randomly before time sync
     ESP_LOGW(TAG, "Time not synced yet, using millis() for day calculation");
@@ -404,8 +404,8 @@ uint32_t VevorHeater::get_days_since_epoch() {
   }
   
   // Calculate days since Unix epoch (1970-01-01)
-  // This will reset at midnight local time
-  return time.timestamp / (24 * 60 * 60);
+  // This will reset at midnight UTC
+  return now / (24 * 60 * 60);
 }
 
 void VevorHeater::save_fuel_consumption_data() {
