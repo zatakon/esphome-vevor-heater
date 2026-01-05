@@ -75,6 +75,9 @@ void VevorHeater::update() {
   // Check for daily reset
   check_daily_reset();
   
+  // Check voltage safety
+  check_voltage_safety();
+  
   // Always check for incoming data, regardless of state
   check_uart_data();
   
@@ -525,6 +528,44 @@ void VevorHeater::reset_total_consumption() {
   }
 }
 
+void VevorHeater::check_voltage_safety() {
+  bool voltage_error = false;
+  
+  // Check voltage thresholds based on state
+  if ((current_state_ == HeaterState::OFF || current_state_ == HeaterState::POLLING_STATE) && 
+      heater_enabled_) {
+    // During OFF/POLLING_STATE, check if voltage is sufficient to start
+    if (input_voltage_ < min_voltage_start_) {
+      ESP_LOGW(TAG, "Low voltage detected during start: %.1fV < %.1fV", 
+               input_voltage_, min_voltage_start_);
+      voltage_error = true;
+      heater_enabled_ = false;  // Prevent starting
+    }
+  } else if (current_state_ == HeaterState::STABLE_COMBUSTION) {
+    // During stable combustion, check if voltage is sufficient to keep running
+    if (input_voltage_ < min_voltage_operate_) {
+      ESP_LOGW(TAG, "Low voltage detected during operation: %.1fV < %.1fV - Stopping heater", 
+               input_voltage_, min_voltage_operate_);
+      voltage_error = true;
+      heater_enabled_ = false;  // Force stop
+    }
+  }
+  
+  // Update error state
+  if (voltage_error != low_voltage_error_) {
+    low_voltage_error_ = voltage_error;
+    if (low_voltage_error_sensor_) {
+      low_voltage_error_sensor_->publish_state(low_voltage_error_);
+    }
+  } else if (!voltage_error && low_voltage_error_) {
+    // Clear error if voltage has recovered
+    low_voltage_error_ = false;
+    if (low_voltage_error_sensor_) {
+      low_voltage_error_sensor_->publish_state(false);
+    }
+  }
+}
+
 void VevorHeater::handle_communication_timeout() {
   static uint32_t last_timeout_log = 0;
   uint32_t now = millis();
@@ -543,7 +584,7 @@ void VevorHeater::handle_communication_timeout() {
 const char* VevorHeater::state_to_string(HeaterState state) {
   switch (state) {
     case HeaterState::OFF: return "Off";
-    case HeaterState::GLOW_PLUG_PREHEAT: return "Glow Plug Preheat";
+    case HeaterState::POLLING_STATE: return "Polling/Preheat";
     case HeaterState::HEATING_UP: return "Heating Up";
     case HeaterState::STABLE_COMBUSTION: return "Stable Combustion";
     case HeaterState::STOPPING_COOLING: return "Stopping/Cooling";
@@ -578,6 +619,17 @@ void VevorHeater::turn_on() {
       ESP_LOGE(TAG, "Cannot turn on heater: automatic mode requires external temperature sensor!");
       return;
     }
+  }
+  
+  // Check voltage before allowing start
+  if (input_voltage_ < min_voltage_start_) {
+    ESP_LOGW(TAG, "Cannot start heater: voltage too low (%.1fV < %.1fV)", 
+             input_voltage_, min_voltage_start_);
+    low_voltage_error_ = true;
+    if (low_voltage_error_sensor_) {
+      low_voltage_error_sensor_->publish_state(true);
+    }
+    return;
   }
   
   heater_enabled_ = true;
@@ -636,6 +688,7 @@ void VevorHeater::dump_config() {
   LOG_SENSOR("  ", "Hourly Consumption", hourly_consumption_sensor_);
   LOG_SENSOR("  ", "Daily Consumption", daily_consumption_sensor_);
   LOG_SENSOR("  ", "Total Consumption", total_consumption_sensor_);
+  LOG_BINARY_SENSOR("  ", "Low Voltage Error", low_voltage_error_sensor_);
 }
 
 // VevorClimate implementation
