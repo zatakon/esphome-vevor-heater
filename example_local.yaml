@@ -81,44 +81,25 @@ vevor_heater:
   id: my_heater
   uart_id: heater_serial
   time_id: sntp_time
-  control_mode: manual           # Manual mode - heater runs at set power level
+  external_temperature_sensor: workshop_temperature_sensor  # Required for antifreeze mode
   default_power_percent: 80      # Default 80% power when turned on
   injected_per_pulse: 0.022      # Initial value (in ml)
   polling_interval: 300s         # Poll status every 300 seconds when heater is OFF (default: 300s)
   min_voltage_start: 12.3        # Default, can be changed
   min_voltage_operate: 11.4      # Default, can be changed
-  # Reset button for total consumption
+  antifreeze_temp_on: 2.0        # Turn on at 80% below this
+  antifreeze_temp_medium: 6.0    # Set 50% power above this
+  antifreeze_temp_low: 8.0       # Set 20% power above this
+  antifreeze_temp_off: 9.0       # Turn off above this temperature
+  # Optional control components:
   reset_total_consumption_button:
     name: "Reset Total Fuel Consumption"
-
-# Manual heater controls (switches and sliders)
-switch:
-  - platform: template
+  control_mode_select:
+    name: "Heater Control Mode"
+  power_switch:
     name: "Heater Power"
-    id: heater_power_switch
-    icon: "mdi:fire"
-    optimistic: true
-    turn_on_action:
-      - lambda: |-
-          id(my_heater).turn_on();
-    turn_off_action:
-      - lambda: |-
-          id(my_heater).turn_off();
-
-number:
-  - platform: template
+  power_level_number:
     name: "Heater Power Level"
-    id: heater_power_level
-    icon: "mdi:percent"
-    min_value: 10
-    max_value: 100
-    step: 10
-    unit_of_measurement: "%"
-    initial_value: 80
-    optimistic: true
-    set_action:
-      - lambda: |-
-          id(my_heater).set_power_level_percent(x);
 
 sensor:
   - platform: adc
