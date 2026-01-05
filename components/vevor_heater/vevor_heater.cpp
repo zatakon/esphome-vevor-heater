@@ -2,6 +2,9 @@
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/time.h"
+#ifdef USE_TIME
+#include "esphome/components/time/real_time_clock.h"
+#endif
 #include <cinttypes>
 #include <ctime>
 
@@ -399,6 +402,7 @@ void VevorHeater::check_daily_reset() {
 }
 
 uint32_t VevorHeater::get_days_since_epoch() {
+#ifdef USE_TIME
   // Try to use ESPHome time component if available
   if (time_component_ != nullptr) {
     auto now = time_component_->now();
@@ -408,6 +412,7 @@ uint32_t VevorHeater::get_days_since_epoch() {
       return now.timestamp / (24 * 60 * 60);
     }
   }
+#endif
   
   // Fallback to system time
   std::time_t now = std::time(nullptr);

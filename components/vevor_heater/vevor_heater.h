@@ -9,11 +9,14 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/number/number.h"
-#include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/preferences.h"
 #include <vector>
 
 namespace esphome {
+
+// Forward declaration for optional time component
+namespace time { class RealTimeClock; }
+
 namespace vevor_heater {
 
 static const char *const TAG = "vevor_heater";
