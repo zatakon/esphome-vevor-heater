@@ -71,21 +71,25 @@ void VevorHeater::update() {
   check_uart_data();
   
   // Determine if we should send frames
-  // Send frames if heater is enabled OR if we're in any non-OFF state (including cooldown)
-  bool should_send_frames = heater_enabled_ || (current_state_ != HeaterState::OFF);
+  // Send frames at different intervals based on heater state:
+  // - When heating or in non-OFF state: send every SEND_INTERVAL_MS (1 second)
+  // - When OFF and not enabled: send polling requests every polling_interval_ms_ (default 1 minute)
+  bool is_heating_or_active = heater_enabled_ || (current_state_ != HeaterState::OFF);
   
-  if (should_send_frames) {
-    // Handle communication timeout
+  uint32_t now = millis();
+  uint32_t send_interval = is_heating_or_active ? SEND_INTERVAL_MS : polling_interval_ms_;
+  
+  if (is_heating_or_active) {
+    // Handle communication timeout when actively controlling
     if (!is_connected()) {
       handle_communication_timeout();
     }
-    
-    // Send controller frame at regular intervals
-    uint32_t now = millis();
-    if (now - last_send_time_ >= SEND_INTERVAL_MS) {
-      send_controller_frame();
-      last_send_time_ = now;
-    }
+  }
+  
+  // Send controller frame at appropriate intervals
+  if (now - last_send_time_ >= send_interval) {
+    send_controller_frame();
+    last_send_time_ = now;
   }
   
   // Update instantaneous hourly consumption rate (ml/h) based on current pump frequency
