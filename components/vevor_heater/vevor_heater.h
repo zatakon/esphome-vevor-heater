@@ -34,7 +34,7 @@ enum class ControlMode : uint8_t {
 // Heater states from protocol analysis
 enum class HeaterState : uint8_t {
   OFF = 0x00,
-  GLOW_PLUG_PREHEAT = 0x01,
+  POLLING_STATE = 0x01,  // Used for status polling (was GLOW_PLUG_PREHEAT)
   HEATING_UP = 0x02,
   STABLE_COMBUSTION = 0x03,
   STOPPING_COOLING = 0x04,
@@ -77,6 +77,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_injected_per_pulse(float ml_per_pulse) { injected_per_pulse_ = ml_per_pulse; }
   float get_injected_per_pulse() const { return injected_per_pulse_; }
   void set_polling_interval(uint32_t interval_ms) { polling_interval_ms_ = interval_ms; }
+  void set_min_voltage_start(float voltage) { min_voltage_start_ = voltage; }
+  void set_min_voltage_operate(float voltage) { min_voltage_operate_ = voltage; }
   
   // Time component setter
   void set_time_component(time::RealTimeClock *time) { time_component_ = time; }
@@ -100,6 +102,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_hourly_consumption_sensor(sensor::Sensor *sensor) { hourly_consumption_sensor_ = sensor; }
   void set_daily_consumption_sensor(sensor::Sensor *sensor) { daily_consumption_sensor_ = sensor; }
   void set_total_consumption_sensor(sensor::Sensor *sensor) { total_consumption_sensor_ = sensor; }
+  void set_low_voltage_error_sensor(binary_sensor::BinarySensor *sensor) { low_voltage_error_sensor_ = sensor; }
   
   // Control methods
   void turn_on();
@@ -121,11 +124,12 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   HeaterState get_heater_state() const { return current_state_; }
   float get_current_temperature() const { return current_temperature_; }
   bool is_heating() const { 
-    return current_state_ == HeaterState::GLOW_PLUG_PREHEAT || 
+    return current_state_ == HeaterState::POLLING_STATE || 
            current_state_ == HeaterState::HEATING_UP || 
            current_state_ == HeaterState::STABLE_COMBUSTION; 
   }
   bool is_connected() const { return last_received_time_ + COMMUNICATION_TIMEOUT_MS > millis(); }
+  bool has_low_voltage_error() const { return low_voltage_error_; }
   
   // Fuel consumption getters
   float get_daily_consumption() const { return daily_consumption_ml_; }
@@ -153,6 +157,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   // State management
   void update_sensors(const std::vector<uint8_t> &frame);
   void handle_communication_timeout();
+  void check_voltage_safety();
   
   // Fuel consumption tracking
   void update_fuel_consumption(float pump_frequency);
@@ -176,6 +181,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   ControlMode control_mode_{ControlMode::MANUAL};
   float default_power_percent_{80.0};
   float injected_per_pulse_{INJECTED_PER_PULSE};
+  float min_voltage_start_{12.3f};      // Minimum voltage to allow starting
+  float min_voltage_operate_{11.4f};    // Minimum voltage to keep running
   
   // Parsed sensor values
   float current_temperature_{0.0};
@@ -187,6 +194,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   float glow_plug_current_{0.0};
   uint16_t state_duration_{0};
   bool cooling_down_{false};
+  bool low_voltage_error_{false};
   
   // Fuel consumption tracking
   float last_pump_frequency_{0.0};
@@ -215,6 +223,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   sensor::Sensor *hourly_consumption_sensor_{nullptr};
   sensor::Sensor *daily_consumption_sensor_{nullptr};
   sensor::Sensor *total_consumption_sensor_{nullptr};
+  binary_sensor::BinarySensor *low_voltage_error_sensor_{nullptr};
   number::Number *injected_per_pulse_number_{nullptr};
 };
 

@@ -66,6 +66,7 @@ CONF_COOLING_DOWN = "cooling_down"
 CONF_HOURLY_CONSUMPTION = "hourly_consumption"
 CONF_DAILY_CONSUMPTION = "daily_consumption"
 CONF_TOTAL_CONSUMPTION = "total_consumption"
+CONF_LOW_VOLTAGE_ERROR = "low_voltage_error"
 
 # Fuel consumption constants
 UNIT_MILLILITERS = "ml"
@@ -121,6 +122,10 @@ SENSOR_SCHEMAS = {
     CONF_COOLING_DOWN: binary_sensor.binary_sensor_schema(
         icon=ICON_FAN,
     ),
+    CONF_LOW_VOLTAGE_ERROR: binary_sensor.binary_sensor_schema(
+        icon="mdi:alert-circle",
+        device_class="problem",
+    ),
     CONF_HOURLY_CONSUMPTION: sensor.sensor_schema(
         unit_of_measurement=UNIT_MILLILITERS_PER_HOUR,
         state_class=STATE_CLASS_MEASUREMENT,
@@ -159,6 +164,12 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_POLLING_INTERVAL, default="60s"): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
             cv.Optional(CONF_EXTERNAL_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
+            cv.Optional("min_voltage_start", default=12.3): cv.float_range(
+                min=10.0, max=15.0
+            ),
+            cv.Optional("min_voltage_operate", default=11.4): cv.float_range(
+                min=9.0, max=14.0
+            ),
             cv.Optional(CONF_TARGET_TEMPERATURE, default=20.0): cv.float_range(
                 min=5.0, max=35.0
             ),
@@ -180,6 +191,7 @@ CONFIG_SCHEMA = cv.All(
             ],
             cv.Optional(CONF_STATE_DURATION): SENSOR_SCHEMAS[CONF_STATE_DURATION],
             cv.Optional(CONF_COOLING_DOWN): SENSOR_SCHEMAS[CONF_COOLING_DOWN],
+            cv.Optional(CONF_LOW_VOLTAGE_ERROR): SENSOR_SCHEMAS[CONF_LOW_VOLTAGE_ERROR],
             cv.Optional(CONF_HOURLY_CONSUMPTION): SENSOR_SCHEMAS[CONF_HOURLY_CONSUMPTION],
             cv.Optional(CONF_DAILY_CONSUMPTION): SENSOR_SCHEMAS[CONF_DAILY_CONSUMPTION],
             cv.Optional(CONF_TOTAL_CONSUMPTION): SENSOR_SCHEMAS[CONF_TOTAL_CONSUMPTION],
@@ -230,6 +242,10 @@ async def to_code(config):
     # Set polling interval
     cg.add(var.set_polling_interval(config[CONF_POLLING_INTERVAL]))
     
+    # Set voltage safety thresholds
+    cg.add(var.set_min_voltage_start(config["min_voltage_start"]))
+    cg.add(var.set_min_voltage_operate(config["min_voltage_operate"]))
+    
     # Set time component if provided
     if CONF_TIME_ID in config:
         time_component = await cg.get_variable(config[CONF_TIME_ID])
@@ -262,6 +278,7 @@ async def to_code(config):
 
         binary_sensors_to_create = [
             (CONF_COOLING_DOWN, "set_cooling_down_sensor"),
+            (CONF_LOW_VOLTAGE_ERROR, "set_low_voltage_error_sensor"),
         ]
 
         # Create regular sensors
@@ -324,6 +341,7 @@ async def to_code(config):
             (CONF_TOTAL_CONSUMPTION, "set_total_consumption_sensor", sensor.new_sensor),
             (CONF_STATE, "set_state_sensor", text_sensor.new_text_sensor),
             (CONF_COOLING_DOWN, "set_cooling_down_sensor", binary_sensor.new_binary_sensor),
+            (CONF_LOW_VOLTAGE_ERROR, "set_low_voltage_error_sensor", binary_sensor.new_binary_sensor),
         ]
 
         for sensor_key, setter_method, new_sensor_func in sensor_configs:
