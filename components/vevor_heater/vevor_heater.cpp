@@ -623,12 +623,11 @@ void VevorClimate::setup() {
 
 climate::ClimateTraits VevorClimate::traits() {
   auto traits = climate::ClimateTraits();
-  traits.set_supports_current_temperature(true);
-  traits.set_supports_two_point_target_temperature(false);
   traits.set_visual_min_temperature(min_temperature);
   traits.set_visual_max_temperature(max_temperature);
   traits.set_visual_temperature_step(1.0f);
   traits.set_supported_modes({climate::CLIMATE_MODE_OFF, climate::CLIMATE_MODE_HEAT});
+  traits.add_supported_feature(climate::ClimateFeature::CLIMATE_FEATURE_CURRENT_TEMPERATURE);
   return traits;
 }
 
