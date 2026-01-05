@@ -40,12 +40,6 @@ wifi:
 
 captive_portal:
 
-# Time component for proper midnight detection
-time:
-  - platform: sntp
-    id: sntp_time
-    timezone: Europe/Prague  # Adjust to your timezone
-
 web_server:
   local: True
   port: 80
@@ -80,7 +74,7 @@ uart:
 vevor_heater:
   id: my_heater
   uart_id: heater_serial
-  time_id: sntp_time               # Link to time component for proper midnight detection
+  # Optional: Add time_id: sntp_time to link to a time component for proper midnight detection
   control_mode: manual           # Manual mode - heater runs at set power level
   default_power_percent: 80      # Default 80% power when turned on
   injected_per_pulse: 0.022      # Initial value (in ml)
