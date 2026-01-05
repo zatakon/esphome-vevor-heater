@@ -44,6 +44,7 @@ CONF_DEFAULT_POWER_PERCENT = "default_power_percent"
 CONF_EXTERNAL_TEMPERATURE_SENSOR = "external_temperature_sensor"
 CONF_INJECTED_PER_PULSE = "injected_per_pulse"
 CONF_INJECTED_PER_PULSE_NUMBER = "injected_per_pulse_number"
+CONF_POLLING_INTERVAL = "polling_interval"
 
 # Control mode options
 CONTROL_MODE_MANUAL = "manual"
@@ -147,6 +148,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_INJECTED_PER_PULSE, default=0.022): cv.float_range(
                 min=0.001, max=1.0
             ),
+            cv.Optional(CONF_POLLING_INTERVAL, default="60s"): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_EXTERNAL_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
             cv.Optional(CONF_TARGET_TEMPERATURE, default=20.0): cv.float_range(
                 min=5.0, max=35.0
@@ -208,6 +210,9 @@ async def to_code(config):
     
     # Set injected per pulse
     cg.add(var.set_injected_per_pulse(config[CONF_INJECTED_PER_PULSE]))
+    
+    # Set polling interval
+    cg.add(var.set_polling_interval(config[CONF_POLLING_INTERVAL]))
     
     # Set external temperature sensor if provided
     if CONF_EXTERNAL_TEMPERATURE_SENSOR in config:
