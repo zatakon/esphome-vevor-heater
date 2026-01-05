@@ -266,6 +266,3 @@ class VevorResetTotalConsumptionButton : public button::Button, public Component
 
 }  // namespace vevor_heater
 }  // namespace esphome
-
-}  // namespace vevor_heater
-}  // namespace esphome
