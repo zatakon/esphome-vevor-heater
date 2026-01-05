@@ -7,7 +7,6 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/uart/uart.h"
-#include "esphome/components/climate/climate.h"
 #include "esphome/components/number/number.h"
 #include "esphome/components/button/button.h"
 #include "esphome/core/preferences.h"
@@ -265,62 +264,8 @@ class VevorResetTotalConsumptionButton : public button::Button, public Component
   VevorHeater *heater_{nullptr};
 };
 
-// Climate integration class
-class VevorClimate : public climate::Climate, public Component {
- public:
-  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
-  void set_target_temperature(float temperature) { target_temperature = temperature; }
-  void set_min_temperature(float temperature) { min_temperature = temperature; }
-  void set_max_temperature(float temperature) { max_temperature = temperature; }
-  
-  void setup() override;
-  void control(const climate::ClimateCall &call) override;
-  climate::ClimateTraits traits() override;
-  void update();
-  
- protected:
-  VevorHeater *heater_{nullptr};
-  float min_temperature{5.0};
-  float max_temperature{35.0};
-};
-
-// Automation triggers and actions
-template<typename... Ts> class HeaterTurnOnAction : public Action<Ts...> {
- public:
-  explicit HeaterTurnOnAction(VevorHeater *heater) : heater_(heater) {}
-  void play(Ts... x) override { heater_->turn_on(); }
-  
- protected:
-  VevorHeater *heater_;
-};
-
-template<typename... Ts> class HeaterTurnOffAction : public Action<Ts...> {
- public:
-  explicit HeaterTurnOffAction(VevorHeater *heater) : heater_(heater) {}
-  void play(Ts... x) override { heater_->turn_off(); }
-  
- protected:
-  VevorHeater *heater_;
-};
-
-template<typename... Ts> class HeaterSetPowerAction : public Action<Ts...> {
- public:
-  explicit HeaterSetPowerAction(VevorHeater *heater) : heater_(heater) {}
-  TEMPLATABLE_VALUE(float, power_level)
-  void play(Ts... x) override { heater_->set_power_level_percent(this->power_level_.value(x...)); }
-  
- protected:
-  VevorHeater *heater_;
-};
-
-template<typename... Ts> class HeaterResetDailyConsumptionAction : public Action<Ts...> {
- public:
-  explicit HeaterResetDailyConsumptionAction(VevorHeater *heater) : heater_(heater) {}
-  void play(Ts... x) override { heater_->reset_daily_consumption(); }
-  
- protected:
-  VevorHeater *heater_;
-};
+}  // namespace vevor_heater
+}  // namespace esphome
 
 }  // namespace vevor_heater
 }  // namespace esphome

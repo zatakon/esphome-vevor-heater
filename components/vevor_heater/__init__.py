@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor, uart, text_sensor, binary_sensor, number, switch, climate, time, button
+from esphome.components import sensor, uart, text_sensor, binary_sensor, number, switch, button, time
 from esphome.const import (
     CONF_ID,
     CONF_UART_ID,
@@ -25,22 +25,17 @@ from esphome.const import (
     ICON_POWER,
 )
 
-AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "climate", "number", "button"]
+AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "number", "button"]
 DEPENDENCIES = ["uart"]
 
 vevor_heater_ns = cg.esphome_ns.namespace("vevor_heater")
 VevorHeater = vevor_heater_ns.class_("VevorHeater", cg.PollingComponent)
-VevorClimate = vevor_heater_ns.class_("VevorClimate", climate.Climate, cg.Component)
 VevorInjectedPerPulseNumber = vevor_heater_ns.class_("VevorInjectedPerPulseNumber", number.Number, cg.Component)
 VevorResetTotalConsumptionButton = vevor_heater_ns.class_("VevorResetTotalConsumptionButton", button.Button, cg.Component)
 
 # Configuration keys
 CONF_AUTO_SENSORS = "auto_sensors"
-CONF_CLIMATE_MODE = "climate_mode"
-CONF_TARGET_TEMPERATURE = "target_temperature"
 CONF_CURRENT_TEMPERATURE = "current_temperature"
-CONF_MIN_TEMPERATURE = "min_temperature"
-CONF_MAX_TEMPERATURE = "max_temperature"
 CONF_CONTROL_MODE = "control_mode"
 CONF_DEFAULT_POWER_PERCENT = "default_power_percent"
 CONF_EXTERNAL_TEMPERATURE_SENSOR = "external_temperature_sensor"
@@ -150,7 +145,6 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(VevorHeater),
             cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
             cv.Optional(CONF_AUTO_SENSORS, default=True): cv.boolean,
-            cv.Optional(CONF_CLIMATE_MODE, default=False): cv.boolean,
             cv.Optional(CONF_CONTROL_MODE, default=CONTROL_MODE_MANUAL): cv.enum(
                 {CONTROL_MODE_MANUAL: "manual", CONTROL_MODE_AUTOMATIC: "automatic"},
                 upper=False
@@ -169,15 +163,6 @@ CONFIG_SCHEMA = cv.All(
             ),
             cv.Optional("min_voltage_operate", default=11.4): cv.float_range(
                 min=9.0, max=14.0
-            ),
-            cv.Optional(CONF_TARGET_TEMPERATURE, default=20.0): cv.float_range(
-                min=5.0, max=35.0
-            ),
-            cv.Optional(CONF_MIN_TEMPERATURE, default=5.0): cv.float_range(
-                min=0.0, max=30.0
-            ),
-            cv.Optional(CONF_MAX_TEMPERATURE, default=35.0): cv.float_range(
-                min=10.0, max=50.0
             ),
             # Individual sensor overrides (optional) - removed duplicate temperature sensor
             cv.Optional(CONF_INPUT_VOLTAGE): SENSOR_SCHEMAS[CONF_INPUT_VOLTAGE],
@@ -360,12 +345,3 @@ async def to_code(config):
     if CONF_RESET_TOTAL_CONSUMPTION_BUTTON in config:
         btn = await button.new_button(config[CONF_RESET_TOTAL_CONSUMPTION_BUTTON])
         cg.add(btn.set_vevor_heater(var))
-
-    # Climate mode setup
-    if config[CONF_CLIMATE_MODE]:
-        climate_var = cg.new_Pvariable(config[CONF_ID] + "_climate")
-        await cg.register_component(climate_var, config)
-        cg.add(climate_var.set_vevor_heater(var))
-        cg.add(climate_var.set_target_temperature(config[CONF_TARGET_TEMPERATURE]))
-        cg.add(climate_var.set_min_temperature(config[CONF_MIN_TEMPERATURE]))
-        cg.add(climate_var.set_max_temperature(config[CONF_MAX_TEMPERATURE]))
