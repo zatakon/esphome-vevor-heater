@@ -44,6 +44,12 @@ web_server:
   local: True
   port: 80
 
+# Time component for daily consumption reset
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: Europe/Prague  # Change to your timezone
+
 # Add the library
 external_components:
   - source:
@@ -74,7 +80,7 @@ uart:
 vevor_heater:
   id: my_heater
   uart_id: heater_serial
-  # time_id: sntp_time
+  time_id: sntp_time
   control_mode: manual           # Manual mode - heater runs at set power level
   default_power_percent: 80      # Default 80% power when turned on
   injected_per_pulse: 0.022      # Initial value (in ml)
