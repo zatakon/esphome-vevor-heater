@@ -304,10 +304,11 @@ void VevorHeater::update_sensors(const std::vector<uint8_t> &frame) {
     cooling_down_sensor_->publish_state(cooling_down_);
   }
   
-  // Heat exchanger temperature (bytes 16-17) - FIXED: divide by 10 instead of 100
+  // Heat exchanger temperature (bytes 16-17) - Signed value for negative temps
   if (heat_exchanger_temperature_sensor_ && frame.size() > 17) {
-    uint16_t temp_raw = read_uint16_be(frame, 16);
-    heat_exchanger_temperature_ = temp_raw / 10.0f; // Fixed: was temp_raw / 100.0f
+    // Read as signed int16 to handle negative temperatures correctly
+    int16_t temp_raw = static_cast<int16_t>(read_uint16_be(frame, 16));
+    heat_exchanger_temperature_ = temp_raw / 10.0f;
     heat_exchanger_temperature_sensor_->publish_state(heat_exchanger_temperature_);
     
     // Update current temperature for climate control (no duplicate temperature sensor)
