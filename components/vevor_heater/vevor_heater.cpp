@@ -368,6 +368,9 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
       daily_consumption_ml_ += consumed_ml;
       total_fuel_pulses_ += pulses;  // Keep as float for precision
       
+      // Update total consumption
+      total_consumption_ml_ = total_fuel_pulses_ * injected_per_pulse_;
+      
       // Calculate instantaneous consumption rate for logging
       float instantaneous_ml_per_hour = pump_frequency * injected_per_pulse_ * 3600.0f;
       
@@ -377,6 +380,11 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
       // Update daily consumption sensor
       if (daily_consumption_sensor_) {
         daily_consumption_sensor_->publish_state(daily_consumption_ml_);
+      }
+      
+      // Update total consumption sensor
+      if (total_consumption_sensor_) {
+        total_consumption_sensor_->publish_state(total_consumption_ml_);
       }
       
       // Save data periodically (every 30 seconds to reduce flash wear)
@@ -488,6 +496,12 @@ void VevorHeater::load_fuel_consumption_data() {
   if (daily_consumption_sensor_) {
     daily_consumption_sensor_->publish_state(daily_consumption_ml_);
   }
+  
+  // Publish total consumption
+  total_consumption_ml_ = total_fuel_pulses_ * injected_per_pulse_;
+  if (total_consumption_sensor_) {
+    total_consumption_sensor_->publish_state(total_consumption_ml_);
+  }
 }
 
 void VevorHeater::reset_daily_consumption() {
@@ -497,6 +511,17 @@ void VevorHeater::reset_daily_consumption() {
   
   if (daily_consumption_sensor_) {
     daily_consumption_sensor_->publish_state(daily_consumption_ml_);
+  }
+}
+
+void VevorHeater::reset_total_consumption() {
+  ESP_LOGI(TAG, "Manual reset of total consumption counter");
+  total_fuel_pulses_ = 0.0f;
+  total_consumption_ml_ = 0.0f;
+  save_fuel_consumption_data();
+  
+  if (total_consumption_sensor_) {
+    total_consumption_sensor_->publish_state(total_consumption_ml_);
   }
 }
 
@@ -610,6 +635,7 @@ void VevorHeater::dump_config() {
   LOG_BINARY_SENSOR("  ", "Cooling Down", cooling_down_sensor_);
   LOG_SENSOR("  ", "Hourly Consumption", hourly_consumption_sensor_);
   LOG_SENSOR("  ", "Daily Consumption", daily_consumption_sensor_);
+  LOG_SENSOR("  ", "Total Consumption", total_consumption_sensor_);
 }
 
 // VevorClimate implementation
@@ -627,7 +653,7 @@ climate::ClimateTraits VevorClimate::traits() {
   traits.set_visual_max_temperature(max_temperature);
   traits.set_visual_temperature_step(1.0f);
   traits.set_supported_modes({climate::CLIMATE_MODE_OFF, climate::CLIMATE_MODE_HEAT});
-  traits.add_supported_feature(climate::ClimateFeature::CLIMATE_FEATURE_CURRENT_TEMPERATURE);
+  // Just don't set two-point target temperature support - single point is default
   return traits;
 }
 

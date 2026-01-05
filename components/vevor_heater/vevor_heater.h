@@ -9,6 +9,7 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/number/number.h"
+#include "esphome/components/button/button.h"
 #include "esphome/core/preferences.h"
 #include <vector>
 
@@ -98,12 +99,14 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_cooling_down_sensor(binary_sensor::BinarySensor *sensor) { cooling_down_sensor_ = sensor; }
   void set_hourly_consumption_sensor(sensor::Sensor *sensor) { hourly_consumption_sensor_ = sensor; }
   void set_daily_consumption_sensor(sensor::Sensor *sensor) { daily_consumption_sensor_ = sensor; }
+  void set_total_consumption_sensor(sensor::Sensor *sensor) { total_consumption_sensor_ = sensor; }
   
   // Control methods
   void turn_on();
   void turn_off();
   void set_power_level_percent(float percent);
   void reset_daily_consumption();
+  void reset_total_consumption();
   
   // Control mode management
   bool is_automatic_mode() const { return control_mode_ == ControlMode::AUTOMATIC; }
@@ -191,6 +194,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   float daily_consumption_ml_{0.0};
   uint32_t current_day_{0};
   float total_fuel_pulses_{0.0};  // Keep as float to avoid precision loss
+  float total_consumption_ml_{0.0};  // Lifetime total consumption
   ESPPreferenceObject pref_fuel_consumption_;
   
   // Time component pointer
@@ -210,6 +214,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   binary_sensor::BinarySensor *cooling_down_sensor_{nullptr};
   sensor::Sensor *hourly_consumption_sensor_{nullptr};
   sensor::Sensor *daily_consumption_sensor_{nullptr};
+  sensor::Sensor *total_consumption_sensor_{nullptr};
   number::Number *injected_per_pulse_number_{nullptr};
 };
 
@@ -230,6 +235,21 @@ class VevorInjectedPerPulseNumber : public number::Number, public Component {
     if (heater_) {
       heater_->set_injected_per_pulse(value);
       this->publish_state(value);
+    }
+  }
+  
+  VevorHeater *heater_{nullptr};
+};
+
+// Button component for resetting total consumption
+class VevorResetTotalConsumptionButton : public button::Button, public Component {
+ public:
+  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
+  
+ protected:
+  void press_action() override {
+    if (heater_) {
+      heater_->reset_total_consumption();
     }
   }
   

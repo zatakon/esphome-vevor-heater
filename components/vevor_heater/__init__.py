@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor, uart, text_sensor, binary_sensor, number, switch, climate, time
+from esphome.components import sensor, uart, text_sensor, binary_sensor, number, switch, climate, time, button
 from esphome.const import (
     CONF_ID,
     CONF_UART_ID,
@@ -25,13 +25,14 @@ from esphome.const import (
     ICON_POWER,
 )
 
-AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "climate", "number"]
+AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "climate", "number", "button"]
 DEPENDENCIES = ["uart"]
 
 vevor_heater_ns = cg.esphome_ns.namespace("vevor_heater")
 VevorHeater = vevor_heater_ns.class_("VevorHeater", cg.PollingComponent)
 VevorClimate = vevor_heater_ns.class_("VevorClimate", climate.Climate, cg.Component)
 VevorInjectedPerPulseNumber = vevor_heater_ns.class_("VevorInjectedPerPulseNumber", number.Number, cg.Component)
+VevorResetTotalConsumptionButton = vevor_heater_ns.class_("VevorResetTotalConsumptionButton", button.Button, cg.Component)
 
 # Configuration keys
 CONF_AUTO_SENSORS = "auto_sensors"
@@ -46,6 +47,7 @@ CONF_EXTERNAL_TEMPERATURE_SENSOR = "external_temperature_sensor"
 CONF_INJECTED_PER_PULSE = "injected_per_pulse"
 CONF_INJECTED_PER_PULSE_NUMBER = "injected_per_pulse_number"
 CONF_POLLING_INTERVAL = "polling_interval"
+CONF_RESET_TOTAL_CONSUMPTION_BUTTON = "reset_total_consumption_button"
 
 # Control mode options
 CONTROL_MODE_MANUAL = "manual"
@@ -63,6 +65,7 @@ CONF_STATE_DURATION = "state_duration"
 CONF_COOLING_DOWN = "cooling_down"
 CONF_HOURLY_CONSUMPTION = "hourly_consumption"
 CONF_DAILY_CONSUMPTION = "daily_consumption"
+CONF_TOTAL_CONSUMPTION = "total_consumption"
 
 # Fuel consumption constants
 UNIT_MILLILITERS = "ml"
@@ -129,8 +132,12 @@ SENSOR_SCHEMAS = {
         state_class=STATE_CLASS_TOTAL_INCREASING,
         accuracy_decimals=2,
         icon="mdi:counter",
-    ),
-}
+    ),    CONF_TOTAL_CONSUMPTION: sensor.sensor_schema(
+        unit_of_measurement=UNIT_MILLILITERS,
+        state_class=STATE_CLASS_TOTAL_INCREASING,
+        accuracy_decimals=2,
+        icon="mdi:fuel",
+    ),}
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
@@ -175,6 +182,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_COOLING_DOWN): SENSOR_SCHEMAS[CONF_COOLING_DOWN],
             cv.Optional(CONF_HOURLY_CONSUMPTION): SENSOR_SCHEMAS[CONF_HOURLY_CONSUMPTION],
             cv.Optional(CONF_DAILY_CONSUMPTION): SENSOR_SCHEMAS[CONF_DAILY_CONSUMPTION],
+            cv.Optional(CONF_TOTAL_CONSUMPTION): SENSOR_SCHEMAS[CONF_TOTAL_CONSUMPTION],
             # Number component for injected per pulse
             cv.Optional(CONF_INJECTED_PER_PULSE_NUMBER): number.number_schema(
                 VevorInjectedPerPulseNumber,
@@ -186,6 +194,12 @@ CONFIG_SCHEMA = cv.All(
                 cv.Optional("max_value", default=1.0): cv.float_,
                 cv.Optional("step", default=0.001): cv.float_,
             }),
+            # Button to reset total consumption
+            cv.Optional(CONF_RESET_TOTAL_CONSUMPTION_BUTTON): button.button_schema(
+                VevorResetTotalConsumptionButton,
+                icon="mdi:restart",
+                entity_category="config",
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -239,6 +253,7 @@ async def to_code(config):
             (CONF_STATE_DURATION, "set_state_duration_sensor"),
             (CONF_HOURLY_CONSUMPTION, "set_hourly_consumption_sensor"),
             (CONF_DAILY_CONSUMPTION, "set_daily_consumption_sensor"),
+            (CONF_TOTAL_CONSUMPTION, "set_total_consumption_sensor"),
         ]
 
         text_sensors_to_create = [
@@ -306,6 +321,7 @@ async def to_code(config):
             (CONF_STATE_DURATION, "set_state_duration_sensor", sensor.new_sensor),
             (CONF_HOURLY_CONSUMPTION, "set_hourly_consumption_sensor", sensor.new_sensor),
             (CONF_DAILY_CONSUMPTION, "set_daily_consumption_sensor", sensor.new_sensor),
+            (CONF_TOTAL_CONSUMPTION, "set_total_consumption_sensor", sensor.new_sensor),
             (CONF_STATE, "set_state_sensor", text_sensor.new_text_sensor),
             (CONF_COOLING_DOWN, "set_cooling_down_sensor", binary_sensor.new_binary_sensor),
         ]
@@ -321,6 +337,11 @@ async def to_code(config):
         num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
         cg.add(num.set_vevor_heater(var))
         cg.add(var.set_injected_per_pulse_number(num))
+    
+    # Button component for resetting total consumption
+    if CONF_RESET_TOTAL_CONSUMPTION_BUTTON in config:
+        btn = await button.new_button(config[CONF_RESET_TOTAL_CONSUMPTION_BUTTON])
+        cg.add(btn.set_vevor_heater(var))
 
     # Climate mode setup
     if config[CONF_CLIMATE_MODE]:
