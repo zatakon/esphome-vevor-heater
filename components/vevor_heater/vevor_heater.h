@@ -9,6 +9,7 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/number/number.h"
+#include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/preferences.h"
 #include <vector>
 
@@ -51,7 +52,7 @@ static const uint8_t CONTROLLER_FRAME_LENGTH = 0x0B;
 static const uint8_t HEATER_FRAME_LENGTH = 0x33;
 static const uint32_t COMMUNICATION_TIMEOUT_MS = 5000;
 static const uint32_t SEND_INTERVAL_MS = 1000;
-static const uint32_t DEFAULT_POLLING_INTERVAL_MS = 60000; // 1 minute when not heating
+static const uint32_t DEFAULT_POLLING_INTERVAL_MS = 300000; // 1 minute when not heating
 
 // Fuel consumption tracking structure for persistence
 struct FuelConsumptionData {
@@ -72,6 +73,9 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_injected_per_pulse(float ml_per_pulse) { injected_per_pulse_ = ml_per_pulse; }
   float get_injected_per_pulse() const { return injected_per_pulse_; }
   void set_polling_interval(uint32_t interval_ms) { polling_interval_ms_ = interval_ms; }
+  
+  // Time component setter
+  void set_time_component(time::RealTimeClock *time) { time_component_ = time; }
   
   // Number component setter
   void set_injected_per_pulse_number(number::Number *num) { injected_per_pulse_number_ = num; }
@@ -185,6 +189,9 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   uint32_t current_day_{0};
   float total_fuel_pulses_{0.0};  // Keep as float to avoid precision loss
   ESPPreferenceObject pref_fuel_consumption_;
+  
+  // Time component pointer
+  time::RealTimeClock *time_component_{nullptr};
   
   // Sensor pointers - removed duplicate temperature_sensor_
   sensor::Sensor *external_temperature_sensor_{nullptr};

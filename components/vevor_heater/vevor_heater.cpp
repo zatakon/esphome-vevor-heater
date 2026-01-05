@@ -398,7 +398,17 @@ void VevorHeater::check_daily_reset() {
 }
 
 uint32_t VevorHeater::get_days_since_epoch() {
-  // Use system time to get actual calendar day
+  // Try to use ESPHome time component if available
+  if (time_component_ != nullptr) {
+    auto now = time_component_->now();
+    if (now.is_valid()) {
+      // Calculate days since epoch using ESPHome time
+      // This will properly handle midnight in the configured timezone
+      return now.timestamp / (24 * 60 * 60);
+    }
+  }
+  
+  // Fallback to system time
   std::time_t now = std::time(nullptr);
   if (now < 1609459200) {  // If time is before 2021-01-01, it's not synced yet
     // If time is not synced yet, fall back to millis-based calculation

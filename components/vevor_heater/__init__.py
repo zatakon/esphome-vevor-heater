@@ -1,10 +1,11 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor, uart, text_sensor, binary_sensor, number, switch, climate
+from esphome.components import sensor, uart, text_sensor, binary_sensor, number, switch, climate, time
 from esphome.const import (
     CONF_ID,
     CONF_UART_ID,
     CONF_NAME,
+    CONF_TIME_ID,
     UNIT_CELSIUS,
     UNIT_VOLT,
     UNIT_AMPERE,
@@ -149,6 +150,7 @@ CONFIG_SCHEMA = cv.All(
                 min=0.001, max=1.0
             ),
             cv.Optional(CONF_POLLING_INTERVAL, default="60s"): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
             cv.Optional(CONF_EXTERNAL_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
             cv.Optional(CONF_TARGET_TEMPERATURE, default=20.0): cv.float_range(
                 min=5.0, max=35.0
@@ -213,6 +215,11 @@ async def to_code(config):
     
     # Set polling interval
     cg.add(var.set_polling_interval(config[CONF_POLLING_INTERVAL]))
+    
+    # Set time component if provided
+    if CONF_TIME_ID in config:
+        time_component = await cg.get_variable(config[CONF_TIME_ID])
+        cg.add(var.set_time_component(time_component))
     
     # Set external temperature sensor if provided
     if CONF_EXTERNAL_TEMPERATURE_SENSOR in config:
