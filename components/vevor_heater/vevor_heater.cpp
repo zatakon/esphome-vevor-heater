@@ -78,6 +78,11 @@ void VevorHeater::update() {
   // Check voltage safety
   check_voltage_safety();
   
+  // Handle antifreeze mode logic
+  if (control_mode_ == ControlMode::ANTIFREEZE) {
+    handle_antifreeze_mode();
+  }
+  
   // Always check for incoming data, regardless of state
   check_uart_data();
   
@@ -563,6 +568,57 @@ void VevorHeater::check_voltage_safety() {
     if (low_voltage_error_sensor_) {
       low_voltage_error_sensor_->publish_state(false);
     }
+  }
+}
+
+void VevorHeater::handle_antifreeze_mode() {
+  // Antifreeze mode requires external temperature sensor
+  if (!has_external_sensor()) {
+    ESP_LOGW(TAG, "Antifreeze mode requires external temperature sensor");
+    return;
+  }
+  
+  float temp = external_temperature_;
+  
+  // Temperature-based control logic
+  if (temp < antifreeze_temp_on_) {
+    // Below threshold: Turn on at 80%
+    if (!heater_enabled_) {
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C < %.1f°C, turning on at 80%%", temp, antifreeze_temp_on_);
+      set_power_level_percent(80.0f);
+      turn_on();
+    } else {
+      // Already on, ensure 80% power
+      set_power_level_percent(80.0f);
+    }
+  } else if (temp >= antifreeze_temp_off_) {
+    // At or above off threshold: Turn off
+    if (heater_enabled_) {
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C >= %.1f°C, turning off", temp, antifreeze_temp_off_);
+      turn_off();
+    }
+  } else if (temp >= antifreeze_temp_low_) {
+    // Above low threshold: Set to 20%
+    if (!heater_enabled_) {
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C >= %.1f°C, turning on at 20%%", temp, antifreeze_temp_low_);
+      set_power_level_percent(20.0f);
+      turn_on();
+    } else {
+      set_power_level_percent(20.0f);
+    }
+  } else if (temp >= antifreeze_temp_medium_) {
+    // Above medium threshold: Set to 50%
+    if (!heater_enabled_) {
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C >= %.1f°C, turning on at 50%%", temp, antifreeze_temp_medium_);
+      set_power_level_percent(50.0f);
+      turn_on();
+    } else {
+      set_power_level_percent(50.0f);
+    }
+  }
+  // Between on and medium temp: maintain current state and 80% power if running
+  else if (heater_enabled_) {
+    set_power_level_percent(80.0f);
   }
 }
 

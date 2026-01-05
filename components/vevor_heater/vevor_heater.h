@@ -9,6 +9,8 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/number/number.h"
 #include "esphome/components/button/button.h"
+#include "esphome/components/select/select.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/core/preferences.h"
 #include <vector>
 
@@ -27,7 +29,8 @@ static const float INJECTED_PER_PULSE = 0.022f; // ml per fuel pump pulse
 // Control modes
 enum class ControlMode : uint8_t {
   MANUAL = 0,
-  AUTOMATIC = 1
+  AUTOMATIC = 1,
+  ANTIFREEZE = 2
 };
 
 // Heater states from protocol analysis
@@ -78,6 +81,10 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_polling_interval(uint32_t interval_ms) { polling_interval_ms_ = interval_ms; }
   void set_min_voltage_start(float voltage) { min_voltage_start_ = voltage; }
   void set_min_voltage_operate(float voltage) { min_voltage_operate_ = voltage; }
+  void set_antifreeze_temp_on(float temp) { antifreeze_temp_on_ = temp; }
+  void set_antifreeze_temp_medium(float temp) { antifreeze_temp_medium_ = temp; }
+  void set_antifreeze_temp_low(float temp) { antifreeze_temp_low_ = temp; }
+  void set_antifreeze_temp_off(float temp) { antifreeze_temp_off_ = temp; }
   
   // Time component setter
   void set_time_component(time::RealTimeClock *time) { time_component_ = time; }
@@ -113,6 +120,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   // Control mode management
   bool is_automatic_mode() const { return control_mode_ == ControlMode::AUTOMATIC; }
   bool is_manual_mode() const { return control_mode_ == ControlMode::MANUAL; }
+  bool is_antifreeze_mode() const { return control_mode_ == ControlMode::ANTIFREEZE; }
   float get_external_temperature() const { return external_temperature_; }
   bool has_external_sensor() const { 
     return external_temperature_sensor_ != nullptr && 
@@ -157,6 +165,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void update_sensors(const std::vector<uint8_t> &frame);
   void handle_communication_timeout();
   void check_voltage_safety();
+  void handle_antifreeze_mode();
   
   // Fuel consumption tracking
   void update_fuel_consumption(float pump_frequency);
@@ -182,6 +191,10 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   float injected_per_pulse_{INJECTED_PER_PULSE};
   float min_voltage_start_{12.3f};      // Minimum voltage to allow starting
   float min_voltage_operate_{11.4f};    // Minimum voltage to keep running
+  float antifreeze_temp_on_{2.0f};      // Temperature to turn on at 80% power
+  float antifreeze_temp_medium_{6.0f};  // Temperature to set 50% power
+  float antifreeze_temp_low_{8.0f};     // Temperature to set 20% power
+  float antifreeze_temp_off_{9.0f};     // Temperature to turn off
   
   // Parsed sensor values
   float current_temperature_{0.0};
@@ -258,6 +271,97 @@ class VevorResetTotalConsumptionButton : public button::Button, public Component
   void press_action() override {
     if (heater_) {
       heater_->reset_total_consumption();
+    }
+  }
+  
+  VevorHeater *heater_{nullptr};
+};
+
+// Switch component for heater power control (Manual mode only)
+class VevorHeaterPowerSwitch : public switch_::Switch, public Component {
+ public:
+  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
+  
+ protected:
+  void write_state(bool state) override {
+    if (heater_) {
+      // Only allow control in manual mode
+      if (!heater_->is_manual_mode()) {
+        ESP_LOGW("vevor_heater", "Power switch only works in Manual mode");
+        // Restore previous state
+        this->publish_state(!state);
+        return;
+      }
+      
+      if (state) {
+        heater_->turn_on();
+      } else {
+        heater_->turn_off();
+      }
+      this->publish_state(state);
+    }
+  }
+  
+  VevorHeater *heater_{nullptr};
+};
+
+// Number component for power level control (Manual mode only)
+class VevorHeaterPowerLevelNumber : public number::Number, public Component {
+ public:
+  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
+  
+  void setup() override {
+    if (heater_) {
+      this->publish_state(80.0f);  // Default power level
+    }
+  }
+  
+ protected:
+  void control(float value) override {
+    if (heater_) {
+      // Only allow control in manual mode
+      if (!heater_->is_manual_mode()) {
+        ESP_LOGW("vevor_heater", "Power level only works in Manual mode");
+        return;
+      }
+      
+      heater_->set_power_level_percent(value);
+      this->publish_state(value);
+    }
+  }
+  
+  VevorHeater *heater_{nullptr};
+};
+
+// Select component for control mode
+class VevorControlModeSelect : public select::Select, public Component {
+ public:
+  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
+  
+  void setup() override {
+    // Set initial value based on heater's mode
+    if (heater_) {
+      if (heater_->is_manual_mode()) {
+        this->publish_state("Manual");
+      } else if (heater_->is_antifreeze_mode()) {
+        this->publish_state("Antifreeze");
+      }
+      // Automatic mode commented out for now
+    }
+  }
+  
+ protected:
+  void control(const std::string &value) override {
+    if (heater_) {
+      if (value == "Manual") {
+        heater_->set_control_mode(ControlMode::MANUAL);
+      } else if (value == "Antifreeze") {
+        heater_->set_control_mode(ControlMode::ANTIFREEZE);
+      }
+      // else if (value == "Automatic") {
+      //   heater_->set_control_mode(ControlMode::AUTOMATIC);
+      // }
+      this->publish_state(value);
     }
   }
   

@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor, uart, text_sensor, binary_sensor, number, switch, button, time
+from esphome.components import sensor, uart, text_sensor, binary_sensor, number, switch, button, time, select
 from esphome.const import (
     CONF_ID,
     CONF_UART_ID,
@@ -25,28 +25,35 @@ from esphome.const import (
     ICON_POWER,
 )
 
-AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "number", "button"]
+AUTO_LOAD = ["sensor", "text_sensor", "binary_sensor", "number", "button", "select", "switch"]
 DEPENDENCIES = ["uart"]
 
 vevor_heater_ns = cg.esphome_ns.namespace("vevor_heater")
 VevorHeater = vevor_heater_ns.class_("VevorHeater", cg.PollingComponent)
 VevorInjectedPerPulseNumber = vevor_heater_ns.class_("VevorInjectedPerPulseNumber", number.Number, cg.Component)
 VevorResetTotalConsumptionButton = vevor_heater_ns.class_("VevorResetTotalConsumptionButton", button.Button, cg.Component)
+VevorControlModeSelect = vevor_heater_ns.class_("VevorControlModeSelect", select.Select, cg.Component)
+VevorHeaterPowerSwitch = vevor_heater_ns.class_("VevorHeaterPowerSwitch", switch.Switch, cg.Component)
+VevorHeaterPowerLevelNumber = vevor_heater_ns.class_("VevorHeaterPowerLevelNumber", number.Number, cg.Component)
 
 # Configuration keys
 CONF_AUTO_SENSORS = "auto_sensors"
 CONF_CURRENT_TEMPERATURE = "current_temperature"
 CONF_CONTROL_MODE = "control_mode"
+CONF_CONTROL_MODE_SELECT = "control_mode_select"
 CONF_DEFAULT_POWER_PERCENT = "default_power_percent"
 CONF_EXTERNAL_TEMPERATURE_SENSOR = "external_temperature_sensor"
 CONF_INJECTED_PER_PULSE = "injected_per_pulse"
 CONF_INJECTED_PER_PULSE_NUMBER = "injected_per_pulse_number"
 CONF_POLLING_INTERVAL = "polling_interval"
 CONF_RESET_TOTAL_CONSUMPTION_BUTTON = "reset_total_consumption_button"
+CONF_POWER_SWITCH = "power_switch"
+CONF_POWER_LEVEL_NUMBER = "power_level_number"
 
 # Control mode options
 CONTROL_MODE_MANUAL = "manual"
 CONTROL_MODE_AUTOMATIC = "automatic"
+CONTROL_MODE_ANTIFREEZE = "antifreeze"
 
 # Sensor configuration keys - removed CONF_TEMPERATURE (duplicate)
 CONF_INPUT_VOLTAGE = "input_voltage"
@@ -146,7 +153,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
             cv.Optional(CONF_AUTO_SENSORS, default=True): cv.boolean,
             cv.Optional(CONF_CONTROL_MODE, default=CONTROL_MODE_MANUAL): cv.enum(
-                {CONTROL_MODE_MANUAL: "manual", CONTROL_MODE_AUTOMATIC: "automatic"},
+                {CONTROL_MODE_MANUAL: "manual", CONTROL_MODE_AUTOMATIC: "automatic", CONTROL_MODE_ANTIFREEZE: "antifreeze"},
                 upper=False
             ),
             cv.Optional(CONF_DEFAULT_POWER_PERCENT, default=80.0): cv.float_range(
@@ -163,6 +170,19 @@ CONFIG_SCHEMA = cv.All(
             ),
             cv.Optional("min_voltage_operate", default=11.4): cv.float_range(
                 min=9.0, max=14.0
+            ),
+            # Antifreeze mode temperature thresholds
+            cv.Optional("antifreeze_temp_on", default=2.0): cv.float_range(
+                min=-20.0, max=20.0
+            ),
+            cv.Optional("antifreeze_temp_medium", default=6.0): cv.float_range(
+                min=-20.0, max=20.0
+            ),
+            cv.Optional("antifreeze_temp_low", default=8.0): cv.float_range(
+                min=-20.0, max=20.0
+            ),
+            cv.Optional("antifreeze_temp_off", default=9.0): cv.float_range(
+                min=-20.0, max=30.0
             ),
             # Individual sensor overrides (optional) - removed duplicate temperature sensor
             cv.Optional(CONF_INPUT_VOLTAGE): SENSOR_SCHEMAS[CONF_INPUT_VOLTAGE],
@@ -197,6 +217,27 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:restart",
                 entity_category="config",
             ),
+            # Select for control mode
+            cv.Optional(CONF_CONTROL_MODE_SELECT): select.select_schema(
+                VevorControlModeSelect,
+                icon="mdi:format-list-bulleted",
+                entity_category="config",
+            ),
+            # Switch for heater power control
+            cv.Optional(CONF_POWER_SWITCH): switch.switch_schema(
+                VevorHeaterPowerSwitch,
+                icon="mdi:fire",
+            ),
+            # Number for power level control
+            cv.Optional(CONF_POWER_LEVEL_NUMBER): number.number_schema(
+                VevorHeaterPowerLevelNumber,
+                unit_of_measurement=UNIT_PERCENT,
+                icon="mdi:percent",
+            ).extend({
+                cv.Optional("min_value", default=10.0): cv.float_,
+                cv.Optional("max_value", default=100.0): cv.float_,
+                cv.Optional("step", default=10.0): cv.float_,
+            }),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -215,6 +256,8 @@ async def to_code(config):
     control_mode = config[CONF_CONTROL_MODE]
     if control_mode == CONTROL_MODE_AUTOMATIC:
         cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::AUTOMATIC")))
+    elif control_mode == CONTROL_MODE_ANTIFREEZE:
+        cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::ANTIFREEZE")))
     else:
         cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::MANUAL")))
     
@@ -230,6 +273,12 @@ async def to_code(config):
     # Set voltage safety thresholds
     cg.add(var.set_min_voltage_start(config["min_voltage_start"]))
     cg.add(var.set_min_voltage_operate(config["min_voltage_operate"]))
+    
+    # Set antifreeze temperature thresholds
+    cg.add(var.set_antifreeze_temp_on(config["antifreeze_temp_on"]))
+    cg.add(var.set_antifreeze_temp_medium(config["antifreeze_temp_medium"]))
+    cg.add(var.set_antifreeze_temp_low(config["antifreeze_temp_low"]))
+    cg.add(var.set_antifreeze_temp_off(config["antifreeze_temp_off"]))
     
     # Set time component if provided
     if CONF_TIME_ID in config:
@@ -345,3 +394,19 @@ async def to_code(config):
     if CONF_RESET_TOTAL_CONSUMPTION_BUTTON in config:
         btn = await button.new_button(config[CONF_RESET_TOTAL_CONSUMPTION_BUTTON])
         cg.add(btn.set_vevor_heater(var))
+    
+    # Select component for control mode
+    if CONF_CONTROL_MODE_SELECT in config:
+        sel = await select.new_select(config[CONF_CONTROL_MODE_SELECT], options=["Manual", "Antifreeze"])  # "Automatic" commented out
+        cg.add(sel.set_vevor_heater(var))
+    
+    # Switch component for heater power
+    if CONF_POWER_SWITCH in config:
+        sw = await switch.new_switch(config[CONF_POWER_SWITCH])
+        cg.add(sw.set_vevor_heater(var))
+    
+    # Number component for power level
+    if CONF_POWER_LEVEL_NUMBER in config:
+        num_config = config[CONF_POWER_LEVEL_NUMBER]
+        num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
+        cg.add(num.set_vevor_heater(var))
