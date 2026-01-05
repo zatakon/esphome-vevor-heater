@@ -195,6 +195,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   
   // Time component pointer
   time::RealTimeClock *time_component_{nullptr};
+  bool time_sync_warning_shown_{false};
   
   // Sensor pointers - removed duplicate temperature_sensor_
   sensor::Sensor *external_temperature_sensor_{nullptr};

@@ -59,6 +59,11 @@ void VevorHeater::setup() {
   ESP_LOGCONFIG(TAG, "Default power level: %.0f%%", default_power_percent_);
   ESP_LOGCONFIG(TAG, "Injected per pulse: %.2f ml", injected_per_pulse_);
   ESP_LOGCONFIG(TAG, "Daily consumption: %.2f ml", daily_consumption_ml_);
+  
+  // Send initial status request immediately after boot to get current heater state
+  send_controller_frame();
+  last_send_time_ = millis();
+  ESP_LOGD(TAG, "Initial status request sent");
 }
 
 void VevorHeater::update() {
@@ -409,20 +414,38 @@ uint32_t VevorHeater::get_days_since_epoch() {
     if (now.is_valid()) {
       // Calculate days since epoch using ESPHome time
       // This will properly handle midnight in the configured timezone
+      if (time_sync_warning_shown_) {
+        ESP_LOGI(TAG, "Time synced successfully via time component");
+        time_sync_warning_shown_ = false;  // Reset flag
+      }
       return now.timestamp / (24 * 60 * 60);
+    } else {
+      ESP_LOGVV(TAG, "Time component present but time not valid yet");
     }
   }
 #endif
   
-  // Fallback to system time
+  // Fallback to system time - HomeAssistant API automatically syncs this
   std::time_t now = std::time(nullptr);
+  ESP_LOGVV(TAG, "System time value: %ld", (long)now);
+  
+  // Check if system time is synced (via Home Assistant API or SNTP)
+  // System time will be synced once Home Assistant connects
   if (now < 1609459200) {  // If time is before 2021-01-01, it's not synced yet
     // If time is not synced yet, fall back to millis-based calculation
-    // This ensures we don't reset randomly before time sync
-    ESP_LOGW(TAG, "Time not synced yet, using millis() for day calculation");
+    // Only show info message once
+    if (!time_sync_warning_shown_) {
+      ESP_LOGI(TAG, "Waiting for time sync (via Home Assistant or time component). Using millis() for now.");
+      time_sync_warning_shown_ = true;
+    }
     return millis() / (24 * 60 * 60 * 1000UL);
   }
   
+  // Time is now synced
+  if (time_sync_warning_shown_) {
+    ESP_LOGI(TAG, "System time synced successfully via Home Assistant");
+    time_sync_warning_shown_ = false;  // Reset flag
+  }
   // Calculate days since Unix epoch (1970-01-01)
   // This will reset at midnight UTC
   return now / (24 * 60 * 60);
