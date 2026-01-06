@@ -16,15 +16,19 @@ An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Ho
 - **Plug & Play**: Add just a few lines to your ESPHome configuration
 - **Automatic Sensor Creation**: All sensors created automatically with sensible defaults
 - **Home Assistant Integration**: Native climate entity support
-- **Manual & Automatic Modes**: 
+- **Manual & Antifreeze Modes**: 
   - Manual mode: Direct power level control
-  - Automatic mode: Temperature-based control with external sensor*
+  - Antifreeze mode: Temperature-based automatic power control to prevent freezing
+  - Automatic mode: Temperature-based control with external sensor (experimental)*
+- **Antifreeze Protection**: Automatically adjusts heater power based on temperature thresholds to prevent freezing
+- **Integrated Controls**: Built-in switches, selectors, and number components for direct heater control
+- **Hysteresis**: Prevents rapid power cycling with 0.4°C temperature hysteresis
 - **Smart On/Off Control**: Default 80% power level on startup (configurable)
 - **External Temperature Sensor Support**: Use any ESPHome temperature sensor (e.g., AHT10, DHT22, BMP280)
 - **Protocol Handling**: Robust communication with proper error handling
-- **Safety Features**: Communication timeout detection and failsafe mechanisms
-- **Comprehensive Monitoring**: Temperature, voltage, fan speed, pump frequency, and more
-- **Easy Control**: Simple on/off and power level control
+- **Safety Features**: Communication timeout detection, low voltage protection, and failsafe mechanisms
+- **Comprehensive Monitoring**: Temperature, voltage, fan speed, pump frequency, fuel consumption, and more
+- **Easy Control**: Simple on/off and power level control with mode selector
 - **Climate Platform**: Full thermostat functionality for Home Assistant
 
 I tested functionality briefly. Please report bugs if you find them. 
@@ -35,7 +39,6 @@ I tested functionality briefly. Please report bugs if you find them.
 - **Test automatic mode functionality**
 - **Implement P controller for maintaining target temperature by adjusting power**
 - **Complete climate entity integration**
-- **Add anti-freeze mode**
 
 ## Hardware Requirements
 
@@ -160,13 +163,76 @@ number:
 
 *Will be implemented*
 
-In automatic mode, the heater maintains a target temperature:
-- Temperature-based control
-- External temperature sensor is **MANDATORY**
-- Works with climate entity for thermostat control
-- Automatically adjusts power based on temperature delta
+#### Antifreeze Mode (Temperature-Based Protection)
 
-**Important:** The heater will refuse to turn on in automatic mode if no external temperature sensor is configured or if the sensor has no valid reading.
+In antifreeze mode, the heater automatically adjusts power based on ambient temperature to prevent freezing:
+- Automatically turns on and adjusts power when temperature drops
+- External temperature sensor is **MANDATORY**
+- Configurable temperature thresholds for different power levels
+- Hysteresis prevents rapid power cycling
+
+**Power Levels by Temperature:**
+- Below 2°C: 80% power (max heating)
+- 6°C and above: 50% power
+- 8°C and above: 20% power (minimal heating)
+- 9°C and above: Heater off
+
+```yaml
+# I2C for temperature sensor
+i2c:
+  sda: GPIO7
+  scl: GPIO8
+
+# External temperature sensor (REQUIRED for antifreeze mode)
+sensor:
+  - platform: aht10
+    temperature:
+      name: "Room Temperature"
+      id: room_temp
+    humidity:
+      name: "Room Humidity"
+
+# UART configuration
+uart:
+  id: heater_uart
+  tx_pin: 
+    number: GPIO2
+    inverted: true
+  rx_pin:
+    number: GPIO1 
+    inverted: true
+  baud_rate: 4800
+
+# Heater with antifreeze mode
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  external_temperature_sensor: room_temp  # MANDATORY for antifreeze mode
+  
+  # Optional: Customize antifreeze thresholds (defaults shown)
+  antifreeze_temp_on: 2.0        # Start heating below this temp (80% power)
+  antifreeze_temp_medium: 6.0    # Switch to 50% power above this
+  antifreeze_temp_low: 8.0       # Switch to 20% power above this
+  antifreeze_temp_off: 9.0       # Turn off above this temp
+  
+  # Optional: Add integrated controls
+  control_mode_select:
+    name: "Heater Control Mode"
+  power_switch:
+    name: "Heater Power"
+  power_level_number:
+    name: "Heater Power Level"
+  reset_total_consumption_button:
+    name: "Reset Total Fuel Consumption"
+```
+
+**Integrated Controls:**
+- **Control Mode Select**: Switch between Manual and Antifreeze modes in Home Assistant
+- **Power Switch**: Turn heater on/off (only works in Manual mode)
+- **Power Level Number**: Adjust power 10-100% (only works in Manual mode)
+- **Reset Button**: Reset total fuel consumption counter
+
+**Hysteresis:** The heater uses 0.4°C hysteresis to prevent rapid on/off cycling at temperature boundaries.
 
 <!-- ```yaml
 # I2C for temperature sensor
@@ -221,8 +287,6 @@ climate:
 
 ## Available Sensors
 
-*TODO:* Heat Exchanger Temperature is duplicit
-
 When `auto_sensors: true` (default), these sensors are automatically created:
 
 | Sensor                       | Description                   | Unit | Device Class |
@@ -234,18 +298,19 @@ When `auto_sensors: true` (default), these sensors are automatically created:
 | Fan Speed                    | Combustion fan speed          | RPM  | -            |
 | Pump Frequency               | Fuel pump frequency           | Hz   | -            |
 | Glow Plug Current            | Glow plug current draw        | A    | Current      |
-| Heat Exchanger Temperature   | Detailed heat exchanger temp  | °C   | Temperature  |
 | State Duration               | Time in current state         | s    | Duration     |
 | Cooling Down                 | Cooling down status           | -    | -            |
 | Hourly Consumption           | Instantaneous fuel rate       | ml/h | -            |
 | Daily Consumption            | Total fuel consumed today     | ml   | -            |
+| Total Consumption            | Cumulative fuel consumption   | ml   | -            |
 
 ### Fuel Consumption Tracking
 
-The library includes accurate fuel consumption monitoring:
+The library includes accurate fuel consumption monitoring with persistent storage:
 
 - **Hourly Consumption**: Shows instantaneous fuel consumption rate (ml/h) based on current pump frequency
 - **Daily Consumption**: Accumulates total fuel consumed since midnight, persists across reboots
+- **Total Consumption**: Cumulative fuel consumption with manual reset capability
 - **Configurable Calibration**: Default 0.022 ml per pump pulse, adjustable via configuration or HA number entity
 
 ```yaml
@@ -260,11 +325,70 @@ vevor_heater:
     min_value: 0.001
     max_value: 1.0
     step: 0.001
+  
+  # Optional: Add reset button for total consumption
+  reset_total_consumption_button:
+    name: "Reset Total Fuel Consumption"
 ```
 
-The fuel counter automatically resets daily at midnight and saves data to flash memory to survive reboots.
+The fuel counter automatically resets daily consumption at midnight and saves total consumption data to flash memory to survive reboots.
 
 ## Configuration Options
+
+### Antifreeze Mode Configuration
+
+Configure temperature thresholds for antifreeze protection:
+
+```yaml
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  external_temperature_sensor: room_temp
+  
+  # Antifreeze thresholds (all optional, defaults shown)
+  antifreeze_temp_on: 2.0        # Start heating below this (80% power)
+  antifreeze_temp_medium: 6.0    # Switch to 50% power above this
+  antifreeze_temp_low: 8.0       # Switch to 20% power above this
+  antifreeze_temp_off: 9.0       # Turn off above this
+```
+
+### Integrated Control Components
+
+Add direct control components for mode selection and power control:
+
+```yaml
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  
+  # Optional control components
+  control_mode_select:
+    name: "Control Mode"           # Manual/Antifreeze selector
+  power_switch:
+    name: "Power"                  # On/off control (manual mode only)
+  power_level_number:
+    name: "Power Level"            # 10-100% control (manual mode only)
+  reset_total_consumption_button:
+    name: "Reset Total Consumption"
+```
+
+**Note:** Power switch and power level only function in Manual mode. In Antifreeze mode, these controls are disabled.
+
+### Low Voltage Protection
+
+Configure voltage thresholds for safe operation:
+
+```yaml
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  
+  # Optional voltage thresholds (defaults shown)
+  min_voltage_start: 10.5        # Minimum voltage to allow starting
+  min_voltage_operate: 10.0      # Minimum voltage during operation
+```
+
+The heater will refuse to start below `min_voltage_start` and will shut down if voltage drops below `min_voltage_operate`.
 
 ### Custom Sensor Names
 
@@ -374,6 +498,8 @@ float temp = id(my_heater).get_current_temperature();
 - **State Validation**: Verifies all received data
 - **Checksum Verification**: Ensures data integrity
 - **Failsafe Shutdown**: Safe heater shutdown on errors
+- **Low Voltage Protection**: Prevents starting or operation below configurable voltage thresholds
+- **Antifreeze Protection**: Temperature-based automatic control with hysteresis to prevent freezing
 - **Over-temperature Protection**: Configurable via automations
 
 <!-- ## Examples
