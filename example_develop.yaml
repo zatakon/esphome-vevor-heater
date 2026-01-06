@@ -12,7 +12,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "zatakon.vevor-heater"
-    version: "1.2.0"  # Library version with daily consumption fix
+    version: "1.3.0"
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -68,32 +68,17 @@ vevor_heater:
   control_mode: manual           # Manual mode - heater runs at set power level
   default_power_percent: 80      # Default 80% power when turned on
   injected_per_pulse: 0.022      # Initial value (in ml)
-
-# Manual heater controls (switches and sliders)
-switch:
-  - platform: template
+  
+  # Optional: Add integrated controls (v1.3.0+)
+  control_mode_select:
+    name: "Heater Control Mode"
+  power_switch:
     name: "Heater Power"
-    id: heater_power_switch
-    icon: "mdi:fire"
-    optimistic: true
-    turn_on_action:
-      - lambda: |-
-          id(my_heater).turn_on();
-    turn_off_action:
-      - lambda: |-
-          id(my_heater).turn_off();
-
-number:
-  - platform: template
+  power_level_number:
     name: "Heater Power Level"
-    id: heater_power_level
-    icon: "mdi:percent"
-    min_value: 10
-    max_value: 100
-    step: 10
-    unit_of_measurement: "%"
-    initial_value: 80
-    optimistic: true
-    set_action:
-      - lambda: |-
-          id(my_heater).set_power_level_percent(x);
+  reset_total_consumption_button:
+    name: "Reset Total Fuel Consumption"
+
+# Note: With integrated controls above, these template controls are optional
+# You can use either the integrated controls or these template versions
+# Integrated controls are recommended as they work seamlessly with control modes
