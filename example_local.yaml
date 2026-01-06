@@ -88,9 +88,9 @@ vevor_heater:
   min_voltage_start: 12.3        # Default, can be changed
   min_voltage_operate: 11.4      # Default, can be changed
   antifreeze_temp_on: 2.0        # Turn on at 80% below this
-  antifreeze_temp_medium: 6.0    # Set 50% power above this
-  antifreeze_temp_low: 8.0       # Set 20% power above this
-  antifreeze_temp_off: 9.0       # Turn off above this temperature
+  antifreeze_temp_medium: 4.0    # Set 50% power above this
+  antifreeze_temp_low: 4.7       # Set 20% power above this
+  antifreeze_temp_off: 5.0       # Turn off above this temperature
   # Optional control components:
   reset_total_consumption_button:
     name: "Reset Total Fuel Consumption"
