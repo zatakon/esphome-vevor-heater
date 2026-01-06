@@ -195,6 +195,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   float antifreeze_temp_medium_{6.0f};  // Temperature to set 50% power
   float antifreeze_temp_low_{8.0f};     // Temperature to set 20% power
   float antifreeze_temp_off_{9.0f};     // Temperature to turn off
+  static constexpr float ANTIFREEZE_HYSTERESIS = 0.4f;  // Hysteresis in °C to prevent rapid cycling
+  float last_antifreeze_power_{0.0f};   // Track last power level for hysteresis logic
   
   // Parsed sensor values
   float current_temperature_{0.0};
