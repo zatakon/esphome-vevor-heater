@@ -23,7 +23,7 @@ captive_portal:
 
 # Add the library
 external_components:
-  - source: github://zatakon/esphome-vevor-heater
+  - source: github://zatakon/esphome-vevor-heater@v1.3.0
     components: [vevor_heater]
 
 # UART for heater communication
@@ -42,12 +42,8 @@ vevor_heater:
   id: my_heater
   uart_id: heater_uart
   # Everything else is automatic with good defaults
-
-# Optional: Add simple on/off switch
-switch:
-  - platform: template
+  
+  # Optional: Add integrated power switch (v1.3.0+)
+  power_switch:
     name: "Heater"
-    turn_on_action:
-      - lambda: "id(my_heater).turn_on();"
-    turn_off_action:
-      - lambda: "id(my_heater).turn_off();"
+
