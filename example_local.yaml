@@ -91,7 +91,7 @@ vevor_heater:
   antifreeze_temp_medium: 4.0    # Set 50% power above this
   antifreeze_temp_low: 5.0       # Set 20% power above this
   antifreeze_temp_off: 5.8       # Turn off above this temperature
-  auto_mode_temp_below: -3.0     # Turn on when temp is 3°C below target (for automatic mode)
+  auto_mode_temp_below: 3.0      # Turn on when temp is 3°C below target (for automatic mode)
   auto_mode_temp_above: 2.0      # Turn off when temp is 2°C above target (for automatic mode)
   # Optional control components:
   reset_total_consumption_button:
