@@ -403,6 +403,11 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
         total_consumption_sensor_->publish_state(total_consumption_ml_ / 1000.0f);  // Convert ml to L
       }
       
+      // Update gas consumption sensor (in cubic meters)
+      if (gas_consumption_sensor_) {
+        gas_consumption_sensor_->publish_state(total_consumption_ml_ / 1000000.0f);  // Convert ml to m³
+      }
+      
       // Save data periodically (every 30 seconds to reduce flash wear)
       static uint32_t last_save = 0;
       if (current_time - last_save > 30000) {
@@ -518,6 +523,11 @@ void VevorHeater::load_fuel_consumption_data() {
   if (total_consumption_sensor_) {
     total_consumption_sensor_->publish_state(total_consumption_ml_ / 1000.0f);  // Convert ml to L
   }
+  
+  // Publish gas consumption
+  if (gas_consumption_sensor_) {
+    gas_consumption_sensor_->publish_state(total_consumption_ml_ / 1000000.0f);  // Convert ml to m³
+  }
 }
 
 void VevorHeater::reset_daily_consumption() {
@@ -538,6 +548,10 @@ void VevorHeater::reset_total_consumption() {
   
   if (total_consumption_sensor_) {
     total_consumption_sensor_->publish_state(total_consumption_ml_);
+  }
+  
+  if (gas_consumption_sensor_) {
+    gas_consumption_sensor_->publish_state(0.0f);
   }
 }
 
@@ -699,7 +713,7 @@ void VevorHeater::handle_communication_timeout() {
 const char* VevorHeater::state_to_string(HeaterState state) {
   switch (state) {
     case HeaterState::OFF: return "Off";
-    case HeaterState::POLLING_STATE: return "Polling/Preheat";
+    case HeaterState::POLLING_STATE: return "Getting state";
     case HeaterState::HEATING_UP: return "Heating Up";
     case HeaterState::STABLE_COMBUSTION: return "Stable Combustion";
     case HeaterState::STOPPING_COOLING: return "Stopping/Cooling";
