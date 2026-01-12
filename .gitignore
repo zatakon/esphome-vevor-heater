@@ -12,3 +12,8 @@ secrets.yaml
 *.swp
 *.swo
 *~
+
+# Python cache files
+*.pyc
+__pycache__/
+.venv/
