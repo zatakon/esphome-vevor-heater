@@ -74,7 +74,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_power_level(uint8_t level) { 
     power_level_ = std::max(1, std::min(10, (int)level)); 
   }
-  void set_control_mode(ControlMode mode) { control_mode_ = mode; }
+  void set_control_mode(ControlMode mode);
   void set_default_power_percent(float percent) { default_power_percent_ = percent; }
   void set_injected_per_pulse(float ml_per_pulse) { injected_per_pulse_ = ml_per_pulse; }
   float get_injected_per_pulse() const { return injected_per_pulse_; }
@@ -197,6 +197,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   float antifreeze_temp_off_{9.0f};     // Temperature to turn off
   static constexpr float ANTIFREEZE_HYSTERESIS = 0.4f;  // Hysteresis in °C to prevent rapid cycling
   float last_antifreeze_power_{0.0f};   // Track last power level for hysteresis logic
+  bool antifreeze_active_{false};       // Track if antifreeze is actively heating
   
   // Parsed sensor values
   float current_temperature_{0.0};

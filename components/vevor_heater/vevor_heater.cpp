@@ -36,6 +36,7 @@ void VevorHeater::setup() {
   // Initialize state
   this->current_state_ = HeaterState::OFF;
   this->heater_enabled_ = false;
+  this->antifreeze_active_ = false;
   this->power_level_ = static_cast<uint8_t>(default_power_percent_ / 10.0f);  // Convert % to 1-10 scale
   this->last_send_time_ = millis();
   this->last_received_time_ = millis();
@@ -575,83 +576,102 @@ void VevorHeater::handle_antifreeze_mode() {
   // Antifreeze mode requires external temperature sensor
   if (!has_external_sensor()) {
     ESP_LOGW(TAG, "Antifreeze mode requires external temperature sensor");
+    // If antifreeze was active but sensor is lost, turn off
+    if (antifreeze_active_) {
+      ESP_LOGW(TAG, "Sensor lost, turning off antifreeze heating");
+      turn_off();
+      antifreeze_active_ = false;
+    }
     return;
   }
   
   float temp = external_temperature_;
   float current_power = heater_enabled_ ? (power_level_ * 10.0f) : 0.0f;
   
-  // Temperature-based control logic with hysteresis
-  // Use hysteresis when transitioning to lower power (warming up)
-  // No hysteresis when transitioning to higher power (cooling down)
+  // Simple antifreeze logic:
+  // ON/OFF: No hysteresis
+  //   - Turn ON when temp < antifreeze_temp_on
+  //   - Turn OFF when temp >= antifreeze_temp_off
+  // Power levels when running:
+  //   - 1.8 - 4.0°C: 80%
+  //   - 4.0 - 5.0°C: 50%
+  //   - 5.0 - 5.8°C: 20%
+  // Hysteresis for increasing power (when temp drops):
+  //   - 20% -> 50% when temp < low - 0.4 (e.g., < 4.6°C)
+  //   - 50% -> 80% when temp < medium - 0.4 (e.g., < 3.6°C)
   
+  // Turn OFF if temp >= OFF threshold
+  if (temp >= antifreeze_temp_off_) {
+    if (heater_enabled_) {
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C >= %.1f°C, turning off", temp, antifreeze_temp_off_);
+      turn_off();
+      antifreeze_active_ = false;
+      last_antifreeze_power_ = 0.0f;
+    }
+    return;
+  }
+  
+  // Turn ON at 80% if temp < ON threshold
   if (temp < antifreeze_temp_on_) {
-    // Below on threshold: Turn on at 80%
     if (!heater_enabled_) {
       ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C < %.1f°C, turning on at 80%%", temp, antifreeze_temp_on_);
       set_power_level_percent(80.0f);
       turn_on();
+      antifreeze_active_ = true;
       last_antifreeze_power_ = 80.0f;
     } else if (current_power != 80.0f) {
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C, setting to 80%%", temp);
       set_power_level_percent(80.0f);
       last_antifreeze_power_ = 80.0f;
     }
-  } else if (temp >= antifreeze_temp_off_ + ANTIFREEZE_HYSTERESIS) {
-    // At or above off threshold + hysteresis: Turn off
-    if (heater_enabled_) {
-      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C >= %.1f°C, turning off", temp, antifreeze_temp_off_ + ANTIFREEZE_HYSTERESIS);
-      turn_off();
-      last_antifreeze_power_ = 0.0f;
-    }
-  } else if (temp >= antifreeze_temp_off_ - ANTIFREEZE_HYSTERESIS && !heater_enabled_) {
-    // Between off-hysteresis and off+hysteresis, stay off if already off
-    // This prevents turning back on immediately after turning off
-  } else if (temp >= antifreeze_temp_low_ + ANTIFREEZE_HYSTERESIS) {
-    // Above low threshold + hysteresis: Set to 20%
-    if (!heater_enabled_) {
-      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C >= %.1f°C, turning on at 20%%", temp, antifreeze_temp_low_);
-      set_power_level_percent(20.0f);
-      turn_on();
-      last_antifreeze_power_ = 20.0f;
-    } else if (current_power > 20.0f) {
-      // Reduce power from higher level
-      set_power_level_percent(20.0f);
-      last_antifreeze_power_ = 20.0f;
-    } else if (current_power < 20.0f && temp < antifreeze_temp_low_ - ANTIFREEZE_HYSTERESIS) {
-      // Increase power from lower level only if temp drops below threshold - hysteresis
+    return;
+  }
+  
+  // If heater is OFF and temp >= ON threshold, stay OFF (don't auto-start)
+  if (!heater_enabled_) {
+    return;
+  }
+  
+  // Heater is ON - manage power levels based on temperature
+  // Set power level with hysteresis for increasing power
+  if (temp >= antifreeze_temp_low_) {
+    // Temperature in 20% zone (5.0 - 5.8°C)
+    if (current_power != 20.0f) {
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C, setting to 20%%", temp);
       set_power_level_percent(20.0f);
       last_antifreeze_power_ = 20.0f;
     }
-  } else if (temp >= antifreeze_temp_medium_ + ANTIFREEZE_HYSTERESIS) {
-    // Above medium threshold + hysteresis: Set to 50%
-    if (!heater_enabled_) {
-      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C >= %.1f°C, turning on at 50%%", temp, antifreeze_temp_medium_);
-      set_power_level_percent(50.0f);
-      turn_on();
-      last_antifreeze_power_ = 50.0f;
-    } else if (current_power > 50.0f) {
-      // Reduce power from higher level
-      set_power_level_percent(50.0f);
-      last_antifreeze_power_ = 50.0f;
-    } else if (current_power < 50.0f && temp < antifreeze_temp_medium_ - ANTIFREEZE_HYSTERESIS) {
-      // Increase power from lower level only if temp drops below threshold - hysteresis
+  } else if (temp >= antifreeze_temp_medium_) {
+    // Temperature in 50% zone (4.0 - 5.0°C)
+    if (current_power == 20.0f) {
+      // Coming from 20%, use hysteresis: increase to 50% when temp drops below low - 0.4
+      if (temp < antifreeze_temp_low_ - 0.4f) {
+        ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C, increasing from 20%% to 50%%", temp);
+        set_power_level_percent(50.0f);
+        last_antifreeze_power_ = 50.0f;
+      }
+    } else if (current_power != 50.0f) {
+      // Coming from 80%, set to 50% immediately
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C, setting to 50%%", temp);
       set_power_level_percent(50.0f);
       last_antifreeze_power_ = 50.0f;
     }
-  } else if (temp < antifreeze_temp_medium_ - ANTIFREEZE_HYSTERESIS) {
-    // Below medium threshold - hysteresis: maintain 80% power
-    if (heater_enabled_ && current_power != 80.0f) {
+  } else {
+    // Temperature in 80% zone (1.8 - 4.0°C)
+    if (current_power == 50.0f) {
+      // Coming from 50%, use hysteresis: increase to 80% when temp drops below medium - 0.4
+      if (temp < antifreeze_temp_medium_ - 0.4f) {
+        ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C, increasing from 50%% to 80%%", temp);
+        set_power_level_percent(80.0f);
+        last_antifreeze_power_ = 80.0f;
+      }
+    } else if (current_power != 80.0f) {
+      // Coming from 20%, set to 80% immediately
+      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C, setting to 80%%", temp);
       set_power_level_percent(80.0f);
-      last_antifreeze_power_ = 80.0f;
-    } else if (!heater_enabled_) {
-      // Turn on if not running
-      ESP_LOGI(TAG, "Antifreeze: Temperature %.1f°C, turning on at 80%%", temp);
-      set_power_level_percent(80.0f);
-      turn_on();
       last_antifreeze_power_ = 80.0f;
     }
   }
-  // In hysteresis band: maintain current state
 }
 
 void VevorHeater::handle_communication_timeout() {
@@ -700,6 +720,20 @@ float VevorHeater::parse_voltage(const std::vector<uint8_t> &data, size_t offset
 }
 
 // Public control methods
+void VevorHeater::set_control_mode(ControlMode mode) {
+  ControlMode old_mode = control_mode_;
+  control_mode_ = mode;
+  
+  // When leaving antifreeze mode, turn off heater if it was active in antifreeze
+  if (old_mode == ControlMode::ANTIFREEZE && antifreeze_active_) {
+    ESP_LOGI(TAG, "Leaving antifreeze mode, turning off heater");
+    turn_off();
+    antifreeze_active_ = false;
+  }
+  
+  ESP_LOGI(TAG, "Control mode changed from %d to %d", (int)old_mode, (int)mode);
+}
+
 void VevorHeater::turn_on() {
   // Check if automatic mode requires external sensor
   if (control_mode_ == ControlMode::AUTOMATIC) {
