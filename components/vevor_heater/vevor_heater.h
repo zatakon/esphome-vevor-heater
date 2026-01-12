@@ -33,6 +33,13 @@ enum class ControlMode : uint8_t {
   ANTIFREEZE = 2
 };
 
+// Automatic mode types
+enum class AutoModeType : uint8_t {
+  OFF = 0,
+  SEMI_AUTO = 1,  // Only adjusts power, user controls on/off
+  FULL_AUTO = 2   // Adjusts power and controls on/off
+};
+
 // Heater states from protocol analysis
 enum class HeaterState : uint8_t {
   OFF = 0x00,
@@ -118,8 +125,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_power_level_percent(float percent);
   void reset_daily_consumption();
   void reset_total_consumption();
-  void set_auto_mode_enabled(bool enabled) { auto_mode_enabled_ = enabled; }
-  bool get_auto_mode_enabled() const { return auto_mode_enabled_; }
+  void set_auto_mode_type(AutoModeType type) { auto_mode_type_ = type; }
+  AutoModeType get_auto_mode_type() const { return auto_mode_type_; }
   
   // Automatic mode helpers
   void handle_automatic_mode();
@@ -208,7 +215,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   bool antifreeze_active_{false};       // Track if antifreeze is actively heating
   
   // Automatic mode state
-  bool auto_mode_enabled_{false};       // Auto on/off switch
+  AutoModeType auto_mode_type_{AutoModeType::OFF};  // Off, Semi-Auto, or Full-Auto
   uint32_t last_power_adjustment_{0};   // Timestamp of last power adjustment
   static constexpr uint32_t POWER_ADJUSTMENT_INTERVAL_MS = 20000;  // 20 seconds
   float auto_mode_temp_below_{-3.0f};   // Turn on when temp is this much below target
@@ -295,34 +302,6 @@ class VevorResetTotalConsumptionButton : public button::Button, public Component
   VevorHeater *heater_{nullptr};
 };
 
-// Switch component for heater power control (Manual mode only)
-class VevorHeaterPowerSwitch : public switch_::Switch, public Component {
- public:
-  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
-  
- protected:
-  void write_state(bool state) override {
-    if (heater_) {
-      // Only allow control in manual mode
-      if (!heater_->is_manual_mode()) {
-        ESP_LOGW("vevor_heater", "Power switch only works in Manual mode");
-        // Restore previous state
-        this->publish_state(!state);
-        return;
-      }
-      
-      if (state) {
-        heater_->turn_on();
-      } else {
-        heater_->turn_off();
-      }
-      this->publish_state(state);
-    }
-  }
-  
-  VevorHeater *heater_{nullptr};
-};
-
 // Number component for power level control (Manual mode only)
 class VevorHeaterPowerLevelNumber : public number::Number, public Component {
  public:
@@ -351,7 +330,7 @@ class VevorHeaterPowerLevelNumber : public number::Number, public Component {
   VevorHeater *heater_{nullptr};
 };
 
-// Select component for control mode
+// Select component for control mode (includes Off and auto modes) (includes Off and auto modes)
 class VevorControlModeSelect : public select::Select, public Component {
  public:
   void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
@@ -364,7 +343,16 @@ class VevorControlModeSelect : public select::Select, public Component {
       } else if (heater_->is_antifreeze_mode()) {
         this->publish_state("Antifreeze");
       } else if (heater_->is_automatic_mode()) {
-        this->publish_state("Automatic");
+        AutoModeType type = heater_->get_auto_mode_type();
+        if (type == AutoModeType::SEMI_AUTO) {
+          this->publish_state("Semi-Auto");
+        } else if (type == AutoModeType::FULL_AUTO) {
+          this->publish_state("Full-Auto");
+        } else {
+          this->publish_state("Off");
+        }
+      } else {
+        this->publish_state("Off");
       }
     }
   }
@@ -372,12 +360,27 @@ class VevorControlModeSelect : public select::Select, public Component {
  protected:
   void control(const std::string &value) override {
     if (heater_) {
-      if (value == "Manual") {
+      if (value == "Off") {
         heater_->set_control_mode(ControlMode::MANUAL);
+        heater_->set_auto_mode_type(AutoModeType::OFF);
+        heater_->turn_off();
+        ESP_LOGI("vevor_heater", "Control Mode: Off");
+      } else if (value == "Manual") {
+        heater_->set_control_mode(ControlMode::MANUAL);
+        heater_->set_auto_mode_type(AutoModeType::OFF);
+        ESP_LOGI("vevor_heater", "Control Mode: Manual");
+      } else if (value == "Semi-Auto") {
+        heater_->set_control_mode(ControlMode::AUTOMATIC);
+        heater_->set_auto_mode_type(AutoModeType::SEMI_AUTO);
+        ESP_LOGI("vevor_heater", "Control Mode: Semi-Auto (power adjustment only)");
+      } else if (value == "Full-Auto") {
+        heater_->set_control_mode(ControlMode::AUTOMATIC);
+        heater_->set_auto_mode_type(AutoModeType::FULL_AUTO);
+        ESP_LOGI("vevor_heater", "Control Mode: Full-Auto (power + on/off control)");
       } else if (value == "Antifreeze") {
         heater_->set_control_mode(ControlMode::ANTIFREEZE);
-      } else if (value == "Automatic") {
-        heater_->set_control_mode(ControlMode::AUTOMATIC);
+        heater_->set_auto_mode_type(AutoModeType::OFF);
+        ESP_LOGI("vevor_heater", "Control Mode: Antifreeze");
       }
       this->publish_state(value);
     }
@@ -386,27 +389,23 @@ class VevorControlModeSelect : public select::Select, public Component {
   VevorHeater *heater_{nullptr};
 };
 
-// Switch component for automatic mode on/off
-class VevorAutoModeSwitch : public switch_::Switch, public Component {
+// Number component for target temperature
+class VevorTargetTemperatureNumber : public number::Number, public Component {
  public:
   void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
   
   void setup() override {
     if (heater_) {
-      this->publish_state(heater_->get_auto_mode_enabled());
+      this->publish_state(20.0f);  // Default target temperature
     }
   }
   
  protected:
-  void write_state(bool state) override {
+  void control(float value) override {
     if (heater_) {
-      heater_->set_auto_mode_enabled(state);
-      this->publish_state(state);
-      if (state) {
-        ESP_LOGI("vevor_heater", "Automatic mode enabled");
-      } else {
-        ESP_LOGI("vevor_heater", "Automatic mode disabled");
-      }
+      heater_->set_target_temperature(value);
+      this->publish_state(value);
+      ESP_LOGI("vevor_heater", "Target temperature set to %.1f°C", value);
     }
   }
   

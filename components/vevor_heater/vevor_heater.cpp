@@ -37,7 +37,7 @@ void VevorHeater::setup() {
   this->current_state_ = HeaterState::OFF;
   this->heater_enabled_ = false;
   this->antifreeze_active_ = false;
-  this->auto_mode_enabled_ = false;
+  this->auto_mode_type_ = AutoModeType::OFF;
   this->last_power_adjustment_ = millis();
   this->power_level_ = static_cast<uint8_t>(default_power_percent_ / 10.0f);  // Convert % to 1-10 scale
   this->last_send_time_ = millis();
@@ -804,47 +804,66 @@ void VevorHeater::handle_automatic_mode() {
   if (!has_external_sensor()) {
     ESP_LOGW(TAG, "Automatic mode requires external temperature sensor");
     // If heater was running in auto mode but sensor is lost, turn off
-    if (heater_enabled_) {
+    if (heater_enabled_ && auto_mode_type_ == AutoModeType::FULL_AUTO) {
       ESP_LOGW(TAG, "Sensor lost, turning off heater");
       turn_off();
     }
     return;
   }
   
-  // Only operate when auto mode is enabled
-  if (!auto_mode_enabled_) {
-    // Auto mode disabled - heater controlled by power switch
+  // Check if auto mode is active
+  if (auto_mode_type_ == AutoModeType::OFF) {
+    // Auto mode disabled - heater controlled by manual controls
     return;
   }
   
   float current_temp = external_temperature_;
   float temp_diff = target_temperature_ - current_temp;
   
-  // Turn heater on/off based on configurable thresholds
-  if (temp_diff >= auto_mode_temp_below_) {
-    // Temperature is below threshold - turn on heater if not already on
-    if (!heater_enabled_) {
-      ESP_LOGI(TAG, "Auto mode: Turning heater ON (temp: %.1f°C, target: %.1f°C, diff: %.1f°C)", 
-               current_temp, target_temperature_, temp_diff);
-      
-      // Set initial power based on current temperature difference
+  // Full-Auto mode: control both power and on/off
+  if (auto_mode_type_ == AutoModeType::FULL_AUTO) {
+    // Turn heater on/off based on configurable thresholds
+    if (temp_diff >= auto_mode_temp_below_) {
+      // Temperature is below threshold - turn on heater if not already on
+      if (!heater_enabled_) {
+        ESP_LOGI(TAG, "Full-Auto: Turning heater ON (temp: %.1f°C, target: %.1f°C, diff: %.1f°C)", 
+                 current_temp, target_temperature_, temp_diff);
+        
+        // Set initial power based on current temperature difference
+        float initial_power = calculate_power_for_temp_diff(temp_diff);
+        set_power_level_percent(initial_power);
+        
+        turn_on();
+        last_power_adjustment_ = millis();
+        
+        ESP_LOGI(TAG, "Full-Auto: Initial power set to %.0f%% based on temp diff %.1f°C", 
+                 initial_power, temp_diff);
+      }
+    } else if (temp_diff <= -auto_mode_temp_above_) {
+      // Temperature is above threshold - turn off heater
+      if (heater_enabled_) {
+        ESP_LOGI(TAG, "Full-Auto: Turning heater OFF (temp: %.1f°C, target: %.1f°C, diff: %.1f°C)", 
+                 current_temp, target_temperature_, temp_diff);
+        turn_off();
+      }
+      return;
+    }
+  }
+  
+  // Semi-Auto mode: only adjust power if heater is on
+  // (user controls on/off via power switch)
+  if (auto_mode_type_ == AutoModeType::SEMI_AUTO) {
+    // If heater just turned on in semi-auto, set initial power
+    static bool was_off = true;
+    if (!was_off && heater_enabled_) {
+      // Just turned on - set initial power
       float initial_power = calculate_power_for_temp_diff(temp_diff);
       set_power_level_percent(initial_power);
-      
-      turn_on();
       last_power_adjustment_ = millis();
-      
-      ESP_LOGI(TAG, "Auto mode: Initial power set to %.0f%% based on temp diff %.1f°C", 
+      ESP_LOGI(TAG, "Semi-Auto: Initial power set to %.0f%% based on temp diff %.1f°C", 
                initial_power, temp_diff);
     }
-  } else if (temp_diff <= -auto_mode_temp_above_) {
-    // Temperature is above threshold - turn off heater
-    if (heater_enabled_) {
-      ESP_LOGI(TAG, "Auto mode: Turning heater OFF (temp: %.1f°C, target: %.1f°C, diff: %.1f°C)", 
-               current_temp, target_temperature_, temp_diff);
-      turn_off();
-    }
-    return;
+    was_off = !heater_enabled_;
   }
   
   // If heater is not on, nothing more to do
@@ -852,7 +871,7 @@ void VevorHeater::handle_automatic_mode() {
     return;
   }
   
-  // Adjust power every 20 seconds
+  // Adjust power every 20 seconds (both Semi-Auto and Full-Auto)
   uint32_t now = millis();
   if (now - last_power_adjustment_ >= POWER_ADJUSTMENT_INTERVAL_MS) {
     last_power_adjustment_ = now;
@@ -863,19 +882,21 @@ void VevorHeater::handle_automatic_mode() {
     
     // Adjust power by max ±10% from current level
     float new_power = current_power;
+    const char* mode_name = (auto_mode_type_ == AutoModeType::SEMI_AUTO) ? "Semi-Auto" : "Full-Auto";
+    
     if (desired_power > current_power + 5.0f) {
       // Need more power - increase by 10%
       new_power = std::min(100.0f, current_power + 10.0f);
-      ESP_LOGI(TAG, "Auto mode: Increasing power from %.0f%% to %.0f%% (temp diff: %.1f°C, desired: %.0f%%)", 
-               current_power, new_power, temp_diff, desired_power);
+      ESP_LOGI(TAG, "%s: Increasing power from %.0f%% to %.0f%% (temp diff: %.1f°C, desired: %.0f%%)", 
+               mode_name, current_power, new_power, temp_diff, desired_power);
     } else if (desired_power < current_power - 5.0f) {
       // Need less power - decrease by 10%
       new_power = std::max(10.0f, current_power - 10.0f);
-      ESP_LOGI(TAG, "Auto mode: Decreasing power from %.0f%% to %.0f%% (temp diff: %.1f°C, desired: %.0f%%)", 
-               current_power, new_power, temp_diff, desired_power);
+      ESP_LOGI(TAG, "%s: Decreasing power from %.0f%% to %.0f%% (temp diff: %.1f°C, desired: %.0f%%)", 
+               mode_name, current_power, new_power, temp_diff, desired_power);
     } else {
-      ESP_LOGD(TAG, "Auto mode: Power unchanged at %.0f%% (temp diff: %.1f°C, desired: %.0f%%)", 
-               current_power, temp_diff, desired_power);
+      ESP_LOGD(TAG, "%s: Power unchanged at %.0f%% (temp diff: %.1f°C, desired: %.0f%%)", 
+               mode_name, current_power, temp_diff, desired_power);
     }
     
     // Apply new power level
@@ -895,7 +916,13 @@ void VevorHeater::dump_config() {
   }
   ESP_LOGCONFIG(TAG, "  Control Mode: %s", mode_str);
   if (control_mode_ == ControlMode::AUTOMATIC) {
-    ESP_LOGCONFIG(TAG, "  Auto Mode Enabled: %s", YESNO(auto_mode_enabled_));
+    const char* auto_type_str = "Off";
+    if (auto_mode_type_ == AutoModeType::SEMI_AUTO) {
+      auto_type_str = "Semi-Auto";
+    } else if (auto_mode_type_ == AutoModeType::FULL_AUTO) {
+      auto_type_str = "Full-Auto";
+    }
+    ESP_LOGCONFIG(TAG, "  Auto Mode Type: %s", auto_type_str);
   }
   ESP_LOGCONFIG(TAG, "  Default Power Level: %.0f%%", default_power_percent_);
   ESP_LOGCONFIG(TAG, "  Power Level: %d/10", power_level_);

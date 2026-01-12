@@ -87,19 +87,21 @@ vevor_heater:
   polling_interval: 300s         # Poll status every 300 seconds when heater is OFF (default: 300s)
   min_voltage_start: 12.3        # Default, can be changed
   min_voltage_operate: 11.4      # Default, can be changed
-  antifreeze_temp_on: 2.0        # Turn on at 80% below this
+  antifreeze_temp_on: 1.8        # Turn on at 80% below this
   antifreeze_temp_medium: 4.0    # Set 50% power above this
-  antifreeze_temp_low: 4.7       # Set 20% power above this
-  antifreeze_temp_off: 5.0       # Turn off above this temperature
+  antifreeze_temp_low: 5.0       # Set 20% power above this
+  antifreeze_temp_off: 5.8       # Turn off above this temperature
+  auto_mode_temp_below: -3.0     # Turn on when temp is 3°C below target (for automatic mode)
+  auto_mode_temp_above: 2.0      # Turn off when temp is 2°C above target (for automatic mode)
   # Optional control components:
   reset_total_consumption_button:
     name: "Reset Total Fuel Consumption"
   control_mode_select:
     name: "Heater Control Mode"
-  power_switch:
-    name: "Heater Power"
   power_level_number:
     name: "Heater Power Level"
+  target_temperature_number:
+    name: "Target Temperature"
 
 sensor:
   - platform: adc
