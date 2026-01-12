@@ -117,6 +117,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_hourly_consumption_sensor(sensor::Sensor *sensor) { hourly_consumption_sensor_ = sensor; }
   void set_daily_consumption_sensor(sensor::Sensor *sensor) { daily_consumption_sensor_ = sensor; }
   void set_total_consumption_sensor(sensor::Sensor *sensor) { total_consumption_sensor_ = sensor; }
+  void set_gas_consumption_sensor(sensor::Sensor *sensor) { gas_consumption_sensor_ = sensor; }
   void set_low_voltage_error_sensor(binary_sensor::BinarySensor *sensor) { low_voltage_error_sensor_ = sensor; }
   
   // Control methods
@@ -260,6 +261,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   sensor::Sensor *hourly_consumption_sensor_{nullptr};
   sensor::Sensor *daily_consumption_sensor_{nullptr};
   sensor::Sensor *total_consumption_sensor_{nullptr};
+  sensor::Sensor *gas_consumption_sensor_{nullptr};
   binary_sensor::BinarySensor *low_voltage_error_sensor_{nullptr};
   number::Number *injected_per_pulse_number_{nullptr};
 };
