@@ -218,7 +218,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   AutoModeType auto_mode_type_{AutoModeType::OFF};  // Off, Semi-Auto, or Full-Auto
   uint32_t last_power_adjustment_{0};   // Timestamp of last power adjustment
   static constexpr uint32_t POWER_ADJUSTMENT_INTERVAL_MS = 20000;  // 20 seconds
-  float auto_mode_temp_below_{-3.0f};   // Turn on when temp is this much below target
+  float auto_mode_temp_below_{3.0f};   // Turn on when temp is this much below target
   float auto_mode_temp_above_{2.0f};    // Turn off when temp is this much above target
   
   // Parsed sensor values

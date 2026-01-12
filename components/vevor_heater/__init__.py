@@ -186,8 +186,8 @@ CONFIG_SCHEMA = cv.All(
                 min=-20.0, max=30.0
             ),
             # Automatic mode temperature thresholds
-            cv.Optional("auto_mode_temp_below", default=-3.0): cv.float_range(
-                min=-10.0, max=0.0
+            cv.Optional("auto_mode_temp_below", default=3.0): cv.float_range(
+                min=0.0, max=10.0
             ),
             cv.Optional("auto_mode_temp_above", default=2.0): cv.float_range(
                 min=0.0, max=10.0
