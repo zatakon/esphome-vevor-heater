@@ -85,6 +85,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_antifreeze_temp_medium(float temp) { antifreeze_temp_medium_ = temp; }
   void set_antifreeze_temp_low(float temp) { antifreeze_temp_low_ = temp; }
   void set_antifreeze_temp_off(float temp) { antifreeze_temp_off_ = temp; }
+  void set_auto_mode_temp_below(float temp) { auto_mode_temp_below_ = temp; }
+  void set_auto_mode_temp_above(float temp) { auto_mode_temp_above_ = temp; }
   
   // Time component setter
   void set_time_component(time::RealTimeClock *time) { time_component_ = time; }
@@ -116,6 +118,12 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_power_level_percent(float percent);
   void reset_daily_consumption();
   void reset_total_consumption();
+  void set_auto_mode_enabled(bool enabled) { auto_mode_enabled_ = enabled; }
+  bool get_auto_mode_enabled() const { return auto_mode_enabled_; }
+  
+  // Automatic mode helpers
+  void handle_automatic_mode();
+  float calculate_power_for_temp_diff(float temp_diff);
   
   // Control mode management
   bool is_automatic_mode() const { return control_mode_ == ControlMode::AUTOMATIC; }
@@ -198,6 +206,13 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   static constexpr float ANTIFREEZE_HYSTERESIS = 0.4f;  // Hysteresis in °C to prevent rapid cycling
   float last_antifreeze_power_{0.0f};   // Track last power level for hysteresis logic
   bool antifreeze_active_{false};       // Track if antifreeze is actively heating
+  
+  // Automatic mode state
+  bool auto_mode_enabled_{false};       // Auto on/off switch
+  uint32_t last_power_adjustment_{0};   // Timestamp of last power adjustment
+  static constexpr uint32_t POWER_ADJUSTMENT_INTERVAL_MS = 20000;  // 20 seconds
+  float auto_mode_temp_below_{-3.0f};   // Turn on when temp is this much below target
+  float auto_mode_temp_above_{2.0f};    // Turn off when temp is this much above target
   
   // Parsed sensor values
   float current_temperature_{0.0};
@@ -348,8 +363,9 @@ class VevorControlModeSelect : public select::Select, public Component {
         this->publish_state("Manual");
       } else if (heater_->is_antifreeze_mode()) {
         this->publish_state("Antifreeze");
+      } else if (heater_->is_automatic_mode()) {
+        this->publish_state("Automatic");
       }
-      // Automatic mode commented out for now
     }
   }
   
@@ -360,11 +376,37 @@ class VevorControlModeSelect : public select::Select, public Component {
         heater_->set_control_mode(ControlMode::MANUAL);
       } else if (value == "Antifreeze") {
         heater_->set_control_mode(ControlMode::ANTIFREEZE);
+      } else if (value == "Automatic") {
+        heater_->set_control_mode(ControlMode::AUTOMATIC);
       }
-      // else if (value == "Automatic") {
-      //   heater_->set_control_mode(ControlMode::AUTOMATIC);
-      // }
       this->publish_state(value);
+    }
+  }
+  
+  VevorHeater *heater_{nullptr};
+};
+
+// Switch component for automatic mode on/off
+class VevorAutoModeSwitch : public switch_::Switch, public Component {
+ public:
+  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
+  
+  void setup() override {
+    if (heater_) {
+      this->publish_state(heater_->get_auto_mode_enabled());
+    }
+  }
+  
+ protected:
+  void write_state(bool state) override {
+    if (heater_) {
+      heater_->set_auto_mode_enabled(state);
+      this->publish_state(state);
+      if (state) {
+        ESP_LOGI("vevor_heater", "Automatic mode enabled");
+      } else {
+        ESP_LOGI("vevor_heater", "Automatic mode disabled");
+      }
     }
   }
   
