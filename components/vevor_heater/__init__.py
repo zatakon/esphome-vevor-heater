@@ -35,6 +35,7 @@ VevorResetTotalConsumptionButton = vevor_heater_ns.class_("VevorResetTotalConsum
 VevorControlModeSelect = vevor_heater_ns.class_("VevorControlModeSelect", select.Select, cg.Component)
 VevorHeaterPowerSwitch = vevor_heater_ns.class_("VevorHeaterPowerSwitch", switch.Switch, cg.Component)
 VevorHeaterPowerLevelNumber = vevor_heater_ns.class_("VevorHeaterPowerLevelNumber", number.Number, cg.Component)
+VevorAutoModeSwitch = vevor_heater_ns.class_("VevorAutoModeSwitch", switch.Switch, cg.Component)
 
 # Configuration keys
 CONF_AUTO_SENSORS = "auto_sensors"
@@ -49,6 +50,7 @@ CONF_POLLING_INTERVAL = "polling_interval"
 CONF_RESET_TOTAL_CONSUMPTION_BUTTON = "reset_total_consumption_button"
 CONF_POWER_SWITCH = "power_switch"
 CONF_POWER_LEVEL_NUMBER = "power_level_number"
+CONF_AUTO_MODE_SWITCH = "auto_mode_switch"
 
 # Control mode options
 CONTROL_MODE_MANUAL = "manual"
@@ -73,6 +75,7 @@ CONF_LOW_VOLTAGE_ERROR = "low_voltage_error"
 # Fuel consumption constants
 UNIT_MILLILITERS = "ml"
 UNIT_MILLILITERS_PER_HOUR = "ml/h"
+UNIT_LITERS = "L"
 
 # Simplified sensor schemas with good defaults - removed duplicate temperature sensor
 SENSOR_SCHEMAS = {
@@ -140,9 +143,9 @@ SENSOR_SCHEMAS = {
         accuracy_decimals=2,
         icon="mdi:counter",
     ),    CONF_TOTAL_CONSUMPTION: sensor.sensor_schema(
-        unit_of_measurement=UNIT_MILLILITERS,
+        unit_of_measurement=UNIT_LITERS,
         state_class=STATE_CLASS_TOTAL_INCREASING,
-        accuracy_decimals=2,
+        accuracy_decimals=3,
         icon="mdi:fuel",
     ),}
 
@@ -183,6 +186,13 @@ CONFIG_SCHEMA = cv.All(
             ),
             cv.Optional("antifreeze_temp_off", default=9.0): cv.float_range(
                 min=-20.0, max=30.0
+            ),
+            # Automatic mode temperature thresholds
+            cv.Optional("auto_mode_temp_below", default=-3.0): cv.float_range(
+                min=-10.0, max=0.0
+            ),
+            cv.Optional("auto_mode_temp_above", default=2.0): cv.float_range(
+                min=0.0, max=10.0
             ),
             # Individual sensor overrides (optional) - removed duplicate temperature sensor
             cv.Optional(CONF_INPUT_VOLTAGE): SENSOR_SCHEMAS[CONF_INPUT_VOLTAGE],
@@ -238,6 +248,11 @@ CONFIG_SCHEMA = cv.All(
                 cv.Optional("max_value", default=100.0): cv.float_,
                 cv.Optional("step", default=10.0): cv.float_,
             }),
+            # Switch for automatic mode on/off
+            cv.Optional(CONF_AUTO_MODE_SWITCH): switch.switch_schema(
+                VevorAutoModeSwitch,
+                icon="mdi:autorenew",
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -279,6 +294,10 @@ async def to_code(config):
     cg.add(var.set_antifreeze_temp_medium(config["antifreeze_temp_medium"]))
     cg.add(var.set_antifreeze_temp_low(config["antifreeze_temp_low"]))
     cg.add(var.set_antifreeze_temp_off(config["antifreeze_temp_off"]))
+    
+    # Set automatic mode temperature thresholds
+    cg.add(var.set_auto_mode_temp_below(config["auto_mode_temp_below"]))
+    cg.add(var.set_auto_mode_temp_above(config["auto_mode_temp_above"]))
     
     # Set time component if provided
     if CONF_TIME_ID in config:
@@ -397,7 +416,7 @@ async def to_code(config):
     
     # Select component for control mode
     if CONF_CONTROL_MODE_SELECT in config:
-        sel = await select.new_select(config[CONF_CONTROL_MODE_SELECT], options=["Manual", "Antifreeze"])  # "Automatic" commented out
+        sel = await select.new_select(config[CONF_CONTROL_MODE_SELECT], options=["Manual", "Automatic", "Antifreeze"])
         cg.add(sel.set_vevor_heater(var))
     
     # Switch component for heater power
@@ -410,3 +429,8 @@ async def to_code(config):
         num_config = config[CONF_POWER_LEVEL_NUMBER]
         num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
         cg.add(num.set_vevor_heater(var))
+    
+    # Switch component for automatic mode
+    if CONF_AUTO_MODE_SWITCH in config:
+        sw = await switch.new_switch(config[CONF_AUTO_MODE_SWITCH])
+        cg.add(sw.set_vevor_heater(var))
