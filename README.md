@@ -16,29 +16,23 @@ An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Ho
 - **Plug & Play**: Add just a few lines to your ESPHome configuration
 - **Automatic Sensor Creation**: All sensors created automatically with sensible defaults
 - **Home Assistant Integration**: Native climate entity support
-- **Manual & Antifreeze Modes**: 
-  - Manual mode: Direct power level control
-  - Antifreeze mode: Temperature-based automatic power control to prevent freezing
-  - Automatic mode: Temperature-based control with external sensor (experimental)*
+- **Multiple Control Modes**: 
+  - **Off**: Heater completely disabled
+  - **Manual**: Direct power level control by user
+  - **Semi-Auto**: Automatic power adjustment, user controls on/off
+  - **Full-Auto**: Complete automatic control (power + on/off)
+  - **Antifreeze**: Temperature-based freeze protection
+- **Smart Automatic Control**: Temperature-based power adjustment with configurable thresholds
 - **Antifreeze Protection**: Automatically adjusts heater power based on temperature thresholds to prevent freezing
-- **Integrated Controls**: Built-in switches, selectors, and number components for direct heater control
-- **Hysteresis**: Prevents rapid power cycling with 0.4°C temperature hysteresis
+- **Integrated Controls**: Single control mode selector for all operating modes
+- **Hysteresis**: Prevents rapid power cycling with smart temperature control
 - **Smart On/Off Control**: Default 80% power level on startup (configurable)
 - **External Temperature Sensor Support**: Use any ESPHome temperature sensor (e.g., AHT10, DHT22, BMP280)
 - **Protocol Handling**: Robust communication with proper error handling
 - **Safety Features**: Communication timeout detection, low voltage protection, and failsafe mechanisms
 - **Comprehensive Monitoring**: Temperature, voltage, fan speed, pump frequency, fuel consumption, and more
-- **Easy Control**: Simple on/off and power level control with mode selector
-- **Climate Platform**: Full thermostat functionality for Home Assistant
-
-I tested functionality briefly. Please report bugs if you find them. 
-
-*experimental
-
-## Todo
-- **Test automatic mode functionality**
-- **Implement P controller for maintaining target temperature by adjusting power**
-- **Complete climate entity integration**
+- **Easy Control**: Simple unified control mode selector
+- **Climate Platform**: Full thermostat functionality for Home Assistant (coming soon)
 
 ## Hardware Requirements
 
@@ -72,7 +66,7 @@ esphome:
   name: ${friendly_name}
   project:
     name: "zatakon.vevor-heater"
-    version: "1.2.1"  # Current library version
+    version: "1.3.0"  # Current library version
 ```
 
 The version number appears in:
@@ -80,7 +74,7 @@ The version number appears in:
 - ESPHome dashboard
 - Device logs
 
-**Current Version: 1.2.0** - Daily consumption sensor fix
+**Current Version: 1.3.0** - Automatic mode with Semi-Auto and Full-Auto control
 
 ### Using Different Versions
 
@@ -94,7 +88,7 @@ external_components:
 **Specific version (for stability):**
 ```yaml
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.2.1
+  - source: github://zatakon/esphome-vevor-heater@v1.3.0
     components: [vevor_heater]
 ```
 
@@ -137,31 +131,96 @@ uart:
 vevor_heater:
   id: my_heater
   uart_id: heater_uart
-  control_mode: manual           # Manual mode (default)
   default_power_percent: 80      # Starts at 80% power when turned on
-
-switch:
-  - platform: template
-    name: "Heater Power"
-    turn_on_action:
-      - lambda: "id(my_heater).turn_on();"
-    turn_off_action:
-      - lambda: "id(my_heater).turn_off();"
-
-number:
-  - platform: template
+  
+  # Integrated control mode selector
+  control_mode_select:
+    name: "Heater Control Mode"
+  power_level_number:
     name: "Heater Power Level"
-    min_value: 10
-    max_value: 100
-    step: 10
-    unit_of_measurement: "%"
-    set_action:
-      - lambda: "id(my_heater).set_power_level_percent(x);"
+  target_temperature_number:
+    name: "Target Temperature"
 ```
 
-#### Automatic Mode with Temperature Sensor - don't use please, will be modified
+#### Automatic Modes (Semi-Auto and Full-Auto)
 
-*Will be implemented*
+The library provides two automatic control modes for intelligent temperature-based heating:
+
+**Semi-Auto Mode:**
+- Automatically adjusts power level every 20 seconds based on temperature difference
+- **You control when heater turns on/off** (via Home Assistant or automations)
+- Power adjusts to match heating needs
+- Requires external temperature sensor
+
+**Full-Auto Mode:**
+- Complete automatic control - both power level AND on/off
+- Heater turns on when temperature drops below target by configured threshold (default: -3°C)
+- Heater turns off when temperature rises above target by configured threshold (default: +2°C)
+- Power adjusts every 20 seconds to match heating needs
+- Requires external temperature sensor
+
+**Power Adjustment Logic (Both Modes):**
+- When heater starts, initial power is set based on current temperature difference
+- Every 20 seconds, power adjusts by ±10% maximum
+- Power levels based on temperature difference from target:
+  - < 1°C difference → 10% power
+  - 1-2°C difference → 20% power
+  - 2-3°C difference → 40% power
+  - 4-5°C difference → 60% power
+  - 5-6°C difference → 80% power
+  - > 6°C difference → 90% power
+
+```yaml
+# I2C for temperature sensor
+i2c:
+  sda: GPIO7
+  scl: GPIO8
+
+# External temperature sensor (REQUIRED for automatic modes)
+sensor:
+  - platform: aht10
+    temperature:
+      name: "Room Temperature"
+      id: room_temp
+    humidity:
+      name: "Room Humidity"
+
+# UART configuration
+uart:
+  id: heater_uart
+  tx_pin: 
+    number: GPIO2
+    inverted: true
+  rx_pin:
+    number: GPIO1 
+    inverted: true
+  baud_rate: 4800
+
+# Heater with automatic control
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  external_temperature_sensor: room_temp  # MANDATORY for automatic modes
+  
+  # Optional: Customize automatic mode thresholds
+  auto_mode_temp_below: -3.0     # Turn on when temp is 3°C below target (Full-Auto only)
+  auto_mode_temp_above: 2.0      # Turn off when temp is 2°C above target (Full-Auto only)
+  
+  # Integrated controls
+  control_mode_select:
+    name: "Heater Control Mode"  # Select: Off/Manual/Semi-Auto/Full-Auto/Antifreeze
+  target_temperature_number:
+    name: "Target Temperature"
+  power_level_number:
+    name: "Heater Power Level"  # For manual adjustments in Manual mode
+```
+
+**Control Mode Options:**
+- **Off**: Heater completely disabled
+- **Manual**: User controls on/off and power manually
+- **Semi-Auto**: Power adjusts automatically, you control on/off
+- **Full-Auto**: Complete automatic control (power + on/off)
+- **Antifreeze**: Temperature-based freeze protection (see below)
 
 #### Antifreeze Mode (Temperature-Based Protection)
 
@@ -234,6 +293,16 @@ vevor_heater:
 
 **Hysteresis:** The heater uses 0.4°C hysteresis to prevent rapid on/off cycling at temperature boundaries.
 
+### Comparison of Control Modes
+
+| Mode | On/Off Control | Power Control | External Sensor | Use Case |
+|------|----------------|---------------|-----------------|----------|
+| **Off** | Disabled | - | No | Heater completely off |
+| **Manual** | User | User (10-100%) | No | Full manual control |
+| **Semi-Auto** | **User** | **Automatic** | **Yes** | You decide when to heat, heater optimizes power |
+| **Full-Auto** | **Automatic** | **Automatic** | **Yes** | Set target temp and forget |
+| **Antifreeze** | Automatic | Automatic | **Yes** | Freeze protection mode |
+
 <!-- ```yaml
 # I2C for temperature sensor
 i2c:
@@ -302,7 +371,7 @@ When `auto_sensors: true` (default), these sensors are automatically created:
 | Cooling Down                 | Cooling down status           | -    | -            |
 | Hourly Consumption           | Instantaneous fuel rate       | ml/h | -            |
 | Daily Consumption            | Total fuel consumed today     | ml   | -            |
-| Total Consumption            | Cumulative fuel consumption   | ml   | -            |
+| Total Consumption            | Cumulative fuel consumption   | L    | -            |
 
 ### Fuel Consumption Tracking
 

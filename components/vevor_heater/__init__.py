@@ -33,9 +33,8 @@ VevorHeater = vevor_heater_ns.class_("VevorHeater", cg.PollingComponent)
 VevorInjectedPerPulseNumber = vevor_heater_ns.class_("VevorInjectedPerPulseNumber", number.Number, cg.Component)
 VevorResetTotalConsumptionButton = vevor_heater_ns.class_("VevorResetTotalConsumptionButton", button.Button, cg.Component)
 VevorControlModeSelect = vevor_heater_ns.class_("VevorControlModeSelect", select.Select, cg.Component)
-VevorHeaterPowerSwitch = vevor_heater_ns.class_("VevorHeaterPowerSwitch", switch.Switch, cg.Component)
 VevorHeaterPowerLevelNumber = vevor_heater_ns.class_("VevorHeaterPowerLevelNumber", number.Number, cg.Component)
-VevorAutoModeSwitch = vevor_heater_ns.class_("VevorAutoModeSwitch", switch.Switch, cg.Component)
+VevorTargetTemperatureNumber = vevor_heater_ns.class_("VevorTargetTemperatureNumber", number.Number, cg.Component)
 
 # Configuration keys
 CONF_AUTO_SENSORS = "auto_sensors"
@@ -48,9 +47,8 @@ CONF_INJECTED_PER_PULSE = "injected_per_pulse"
 CONF_INJECTED_PER_PULSE_NUMBER = "injected_per_pulse_number"
 CONF_POLLING_INTERVAL = "polling_interval"
 CONF_RESET_TOTAL_CONSUMPTION_BUTTON = "reset_total_consumption_button"
-CONF_POWER_SWITCH = "power_switch"
 CONF_POWER_LEVEL_NUMBER = "power_level_number"
-CONF_AUTO_MODE_SWITCH = "auto_mode_switch"
+CONF_TARGET_TEMPERATURE_NUMBER = "target_temperature_number"
 
 # Control mode options
 CONTROL_MODE_MANUAL = "manual"
@@ -233,11 +231,6 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:format-list-bulleted",
                 entity_category="config",
             ),
-            # Switch for heater power control
-            cv.Optional(CONF_POWER_SWITCH): switch.switch_schema(
-                VevorHeaterPowerSwitch,
-                icon="mdi:fire",
-            ),
             # Number for power level control
             cv.Optional(CONF_POWER_LEVEL_NUMBER): number.number_schema(
                 VevorHeaterPowerLevelNumber,
@@ -248,11 +241,17 @@ CONFIG_SCHEMA = cv.All(
                 cv.Optional("max_value", default=100.0): cv.float_,
                 cv.Optional("step", default=10.0): cv.float_,
             }),
-            # Switch for automatic mode on/off
-            cv.Optional(CONF_AUTO_MODE_SWITCH): switch.switch_schema(
-                VevorAutoModeSwitch,
-                icon="mdi:autorenew",
-            ),
+            # Number for target temperature
+            cv.Optional(CONF_TARGET_TEMPERATURE_NUMBER): number.number_schema(
+                VevorTargetTemperatureNumber,
+                unit_of_measurement=UNIT_CELSIUS,
+                icon="mdi:thermometer",
+                device_class=DEVICE_CLASS_TEMPERATURE,
+            ).extend({
+                cv.Optional("min_value", default=5.0): cv.float_,
+                cv.Optional("max_value", default=35.0): cv.float_,
+                cv.Optional("step", default=0.5): cv.float_,
+            }),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -416,21 +415,18 @@ async def to_code(config):
     
     # Select component for control mode
     if CONF_CONTROL_MODE_SELECT in config:
-        sel = await select.new_select(config[CONF_CONTROL_MODE_SELECT], options=["Manual", "Automatic", "Antifreeze"])
+        sel = await select.new_select(config[CONF_CONTROL_MODE_SELECT], options=["Off", "Manual", "Semi-Auto", "Full-Auto", "Antifreeze"])
         cg.add(sel.set_vevor_heater(var))
     
-    # Switch component for heater power
-    if CONF_POWER_SWITCH in config:
-        sw = await switch.new_switch(config[CONF_POWER_SWITCH])
-        cg.add(sw.set_vevor_heater(var))
-    
+
     # Number component for power level
     if CONF_POWER_LEVEL_NUMBER in config:
         num_config = config[CONF_POWER_LEVEL_NUMBER]
         num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
         cg.add(num.set_vevor_heater(var))
     
-    # Switch component for automatic mode
-    if CONF_AUTO_MODE_SWITCH in config:
-        sw = await switch.new_switch(config[CONF_AUTO_MODE_SWITCH])
-        cg.add(sw.set_vevor_heater(var))
+    # Number component for target temperature
+    if CONF_TARGET_TEMPERATURE_NUMBER in config:
+        num_config = config[CONF_TARGET_TEMPERATURE_NUMBER]
+        num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
+        cg.add(num.set_vevor_heater(var))
