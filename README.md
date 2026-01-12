@@ -352,6 +352,58 @@ vevor_heater:
   antifreeze_temp_off: 9.0       # Turn off above this
 ```
 
+**How Antifreeze Mode Works:**
+
+Antifreeze mode provides automatic freeze protection by dynamically adjusting heater power based on ambient temperature. It's designed to prevent freezing conditions while minimizing fuel consumption.
+
+**Temperature Zones and Power Levels:**
+
+The heater operates in different power zones based on temperature:
+
+| Temperature Range | Power Level | Behavior |
+|------------------|-------------|----------|
+| Below `antifreeze_temp_on` (< 2.0°C) | **80%** | Maximum heating - Critical freeze protection |
+| `antifreeze_temp_on` to `antifreeze_temp_medium` (2.0-6.0°C) | **80%** | High power zone |
+| `antifreeze_temp_medium` to `antifreeze_temp_low` (6.0-8.0°C) | **50%** | Medium power zone |
+| `antifreeze_temp_low` to `antifreeze_temp_off` (8.0-9.0°C) | **20%** | Low power zone |
+| Above `antifreeze_temp_off` (≥ 9.0°C) | **OFF** | No heating needed |
+
+**Hysteresis Behavior:**
+
+To prevent rapid power cycling when temperature oscillates, the system uses **0.4°C hysteresis** when *increasing* power:
+
+- **20% → 50%**: Power increases only when temperature drops below `antifreeze_temp_low - 0.4°C` (e.g., < 7.6°C with defaults)
+- **50% → 80%**: Power increases only when temperature drops below `antifreeze_temp_medium - 0.4°C` (e.g., < 5.6°C with defaults)
+
+When temperature *rises*, power decreases immediately without hysteresis. This ensures quick response to warming conditions while preventing excessive power cycling during temperature drops.
+
+**Automatic Startup:**
+
+The heater automatically turns ON at 80% power when temperature falls below `antifreeze_temp_on`. Once the temperature rises above `antifreeze_temp_off`, it automatically turns OFF.
+
+**Example Configuration for Garage Protection:**
+
+```yaml
+vevor_heater:
+  id: garage_heater
+  uart_id: heater_uart
+  control_mode: antifreeze
+  external_temperature_sensor: garage_temp
+  
+  # Custom thresholds for garage (keep above freezing)
+  antifreeze_temp_on: 1.0        # Start at 80% below 1°C
+  antifreeze_temp_medium: 3.0    # Drop to 50% above 3°C
+  antifreeze_temp_low: 5.0       # Drop to 20% above 5°C
+  antifreeze_temp_off: 7.0       # Turn off above 7°C
+```
+
+**Important Notes:**
+
+- External temperature sensor is **MANDATORY** for antifreeze mode
+- If the sensor fails or becomes unavailable, the heater will automatically shut down for safety
+- In antifreeze mode, manual power controls are disabled - all operation is temperature-driven
+- The system continuously monitors temperature and adjusts power levels automatically
+
 ### Integrated Control Components
 
 Add direct control components for mode selection and power control:
