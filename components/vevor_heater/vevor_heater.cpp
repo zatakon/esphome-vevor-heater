@@ -839,7 +839,7 @@ void VevorHeater::handle_automatic_mode() {
         ESP_LOGI(TAG, "Full-Auto: Initial power set to %.0f%% based on temp diff %.1f°C", 
                  initial_power, temp_diff);
       }
-    } else if (temp_diff <= auto_mode_temp_above_) {
+    } else if (temp_diff <= -auto_mode_temp_above_) {
       // Temperature is above threshold - turn off heater
       if (heater_enabled_) {
         ESP_LOGI(TAG, "Full-Auto: Turning heater OFF (temp: %.1f°C, target: %.1f°C, diff: %.1f°C)", 
