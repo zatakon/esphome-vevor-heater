@@ -403,9 +403,9 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
         total_consumption_sensor_->publish_state(total_consumption_ml_ / 1000.0f);  // Convert ml to L
       }
       
-      // Update gas consumption sensor (in cubic meters)
+      // Update gas consumption sensor (daily consumption in cubic meters)
       if (gas_consumption_sensor_) {
-        gas_consumption_sensor_->publish_state(total_consumption_ml_ / 1000000.0f);  // Convert ml to m³
+        gas_consumption_sensor_->publish_state(daily_consumption_ml_ / 1000000.0f);  // Convert ml to m³
       }
       
       // Save data periodically (every 30 seconds to reduce flash wear)
@@ -524,9 +524,9 @@ void VevorHeater::load_fuel_consumption_data() {
     total_consumption_sensor_->publish_state(total_consumption_ml_ / 1000.0f);  // Convert ml to L
   }
   
-  // Publish gas consumption
+  // Publish gas consumption (daily)
   if (gas_consumption_sensor_) {
-    gas_consumption_sensor_->publish_state(total_consumption_ml_ / 1000000.0f);  // Convert ml to m³
+    gas_consumption_sensor_->publish_state(daily_consumption_ml_ / 1000000.0f);  // Convert ml to m³
   }
 }
 
@@ -538,6 +538,10 @@ void VevorHeater::reset_daily_consumption() {
   if (daily_consumption_sensor_) {
     daily_consumption_sensor_->publish_state(daily_consumption_ml_);
   }
+  
+  if (gas_consumption_sensor_) {
+    gas_consumption_sensor_->publish_state(0.0f);
+  }
 }
 
 void VevorHeater::reset_total_consumption() {
@@ -548,10 +552,6 @@ void VevorHeater::reset_total_consumption() {
   
   if (total_consumption_sensor_) {
     total_consumption_sensor_->publish_state(total_consumption_ml_);
-  }
-  
-  if (gas_consumption_sensor_) {
-    gas_consumption_sensor_->publish_state(0.0f);
   }
 }
 
