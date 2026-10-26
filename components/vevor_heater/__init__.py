@@ -391,6 +391,8 @@ async def to_code(config):
     if CONF_INJECTED_PER_PULSE_NUMBER in config:
         num_config = config[CONF_INJECTED_PER_PULSE_NUMBER]
         num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
+        # Register as component so its setup() publishes the initial value
+        await cg.register_component(num, num_config)
         cg.add(num.set_vevor_heater(var))
         cg.add(var.set_injected_per_pulse_number(num))
     
@@ -402,6 +404,7 @@ async def to_code(config):
     # Select component for control mode
     if CONF_CONTROL_MODE_SELECT in config:
         sel = await select.new_select(config[CONF_CONTROL_MODE_SELECT], options=["Off", "Manual", "Semi-Auto", "Full-Auto", "Antifreeze"])
+        await cg.register_component(sel, config[CONF_CONTROL_MODE_SELECT])
         cg.add(sel.set_vevor_heater(var))
     
 
@@ -409,10 +412,12 @@ async def to_code(config):
     if CONF_POWER_LEVEL_NUMBER in config:
         num_config = config[CONF_POWER_LEVEL_NUMBER]
         num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
+        await cg.register_component(num, num_config)
         cg.add(num.set_vevor_heater(var))
     
     # Number component for target temperature
     if CONF_TARGET_TEMPERATURE_NUMBER in config:
         num_config = config[CONF_TARGET_TEMPERATURE_NUMBER]
         num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
+        await cg.register_component(num, num_config)
         cg.add(num.set_vevor_heater(var))
