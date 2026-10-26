@@ -44,6 +44,23 @@ void VevorHeater::setup() {
   this->last_received_time_ = millis();
   this->external_temperature_ = NAN;
   
+  // Track every published value with its time, so a value that stopped
+  // updating (e.g. Home Assistant is down) can be detected in update()
+  if (this->external_temperature_sensor_ != nullptr) {
+    this->external_temperature_sensor_->add_on_state_callback([this](float value) {
+      this->external_temperature_ = value;
+      this->last_external_temperature_update_ = millis();
+      if (this->external_temperature_stale_) {
+        ESP_LOGI(TAG, "External temperature sensor updates again");
+        this->external_temperature_stale_ = false;
+      }
+    });
+    if (this->external_temperature_sensor_->has_state()) {
+      this->external_temperature_ = this->external_temperature_sensor_->state;
+      this->last_external_temperature_update_ = millis();
+    }
+  }
+  
   // Initialize fuel consumption tracking
   // current_day_ is restored from flash in load_fuel_consumption_data(). The
   // time is usually not synced yet at this point, so the day is only compared
@@ -77,9 +94,15 @@ void VevorHeater::setup() {
 }
 
 void VevorHeater::update() {
-  // Update external temperature reading if sensor is available
-  if (external_temperature_sensor_ != nullptr && external_temperature_sensor_->has_state()) {
-    external_temperature_ = external_temperature_sensor_->state;
+  // The external temperature is updated by the state callback set in setup().
+  // Treat it as unavailable when it stopped updating, otherwise automatic
+  // modes would keep controlling the heater on a frozen value.
+  if (external_temperature_timeout_ms_ > 0 && !external_temperature_stale_ &&
+      !std::isnan(external_temperature_) &&
+      millis() - last_external_temperature_update_ > external_temperature_timeout_ms_) {
+    ESP_LOGW(TAG, "External temperature not updated for %" PRIu32 " s, treating it as unavailable",
+             external_temperature_timeout_ms_ / 1000);
+    external_temperature_stale_ = true;
   }
   
   // Check for daily reset
@@ -1051,7 +1074,8 @@ void VevorHeater::dump_config() {
   ESP_LOGCONFIG(TAG, "  Total Fuel Pulses: %.1f", total_fuel_pulses_);
   
   if (external_temperature_sensor_ != nullptr) {
-    ESP_LOGCONFIG(TAG, "  External Temperature Sensor: Configured");
+    ESP_LOGCONFIG(TAG, "  External Temperature Sensor: Configured, timeout %" PRIu32 " s",
+                  external_temperature_timeout_ms_ / 1000);
     if (has_external_sensor()) {
       ESP_LOGCONFIG(TAG, "    Current Reading: %.1f°C", external_temperature_);
     } else {
