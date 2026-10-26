@@ -227,6 +227,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional("min_voltage_operate", default=11.4): cv.float_range(
                 min=9.0, max=14.0
             ),
+            cv.Optional("low_voltage_restart_delay", default="30min"): cv.positive_time_period_milliseconds,
             # Antifreeze mode temperature thresholds
             cv.Optional("antifreeze_temp_on", default=2.0): cv.float_range(
                 min=-20.0, max=20.0
@@ -343,6 +344,7 @@ async def to_code(config):
     # Set voltage safety thresholds
     cg.add(var.set_min_voltage_start(config["min_voltage_start"]))
     cg.add(var.set_min_voltage_operate(config["min_voltage_operate"]))
+    cg.add(var.set_low_voltage_restart_delay(config["low_voltage_restart_delay"]))
     
     # Set antifreeze temperature thresholds
     cg.add(var.set_antifreeze_temp_on(config["antifreeze_temp_on"]))

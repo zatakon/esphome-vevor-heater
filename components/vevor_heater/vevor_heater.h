@@ -88,6 +88,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_polling_interval(uint32_t interval_ms) { polling_interval_ms_ = interval_ms; }
   void set_min_voltage_start(float voltage) { min_voltage_start_ = voltage; }
   void set_min_voltage_operate(float voltage) { min_voltage_operate_ = voltage; }
+  void set_low_voltage_restart_delay(uint32_t delay_ms) { low_voltage_restart_delay_ms_ = delay_ms; }
   void set_antifreeze_temp_on(float temp) { antifreeze_temp_on_ = temp; }
   void set_antifreeze_temp_medium(float temp) { antifreeze_temp_medium_ = temp; }
   void set_antifreeze_temp_low(float temp) { antifreeze_temp_low_ = temp; }
@@ -185,6 +186,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void update_sensors(const std::vector<uint8_t> &frame);
   void handle_communication_timeout();
   void check_voltage_safety();
+  void set_low_voltage_lockout();
+  void update_low_voltage_error_sensor();
   void handle_antifreeze_mode();
   void trigger_start_lockout(HeaterState old_state, HeaterState new_state);
   
@@ -212,6 +215,11 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   float injected_per_pulse_{INJECTED_PER_PULSE};
   float min_voltage_start_{12.3f};      // Minimum voltage to allow starting
   float min_voltage_operate_{11.4f};    // Minimum voltage to keep running
+  uint32_t low_voltage_restart_delay_ms_{30 * 60 * 1000};  // Minimum time automatic starts stay blocked after low voltage
+  static constexpr float LOW_VOLTAGE_RESTART_HYSTERESIS = 0.3f;  // Voltage above min_voltage_start needed to end the lockout
+  bool low_voltage_lockout_{false};     // Automatic starts blocked after a low voltage stop or refused start
+  uint32_t low_voltage_lockout_since_{0};
+  bool voltage_valid_{false};           // A heater frame with the input voltage was received
   float antifreeze_temp_on_{2.0f};      // Temperature to turn on at 80% power
   float antifreeze_temp_medium_{6.0f};  // Temperature to set 50% power
   float antifreeze_temp_low_{8.0f};     // Temperature to set 20% power
