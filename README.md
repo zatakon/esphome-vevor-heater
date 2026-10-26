@@ -426,6 +426,7 @@ vevor_heater:
 
 - External temperature sensor is **MANDATORY** for antifreeze mode
 - If the sensor fails or becomes unavailable, the heater will automatically shut down for safety
+- A value that stops updating counts as unavailable after `external_temperature_timeout` (default `30min`, `0s` disables). This catches a Home Assistant sensor that keeps its last value while Home Assistant is down. A Home Assistant sensor only sends changes, so if your temperature can stay exactly constant for long, raise the timeout
 - In antifreeze mode, manual power controls are disabled - all operation is temperature-driven
 - The system continuously monitors temperature and adjusts power levels automatically
 

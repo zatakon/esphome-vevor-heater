@@ -221,6 +221,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_POLLING_INTERVAL, default="60s"): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
             cv.Optional(CONF_EXTERNAL_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
+            # No new external temperature within this time = sensor unavailable, 0s disables
+            cv.Optional("external_temperature_timeout", default="30min"): cv.positive_time_period_milliseconds,
             cv.Optional("min_voltage_start", default=12.3): cv.float_range(
                 min=10.0, max=15.0
             ),
@@ -365,6 +367,7 @@ async def to_code(config):
     if CONF_EXTERNAL_TEMPERATURE_SENSOR in config:
         external_sensor = await cg.get_variable(config[CONF_EXTERNAL_TEMPERATURE_SENSOR])
         cg.add(var.set_external_temperature_sensor(external_sensor))
+    cg.add(var.set_external_temperature_timeout(config["external_temperature_timeout"]))
 
     # Sensors - with auto_sensors the defaults were already added by _add_auto_sensors()
     sensor_configs = [

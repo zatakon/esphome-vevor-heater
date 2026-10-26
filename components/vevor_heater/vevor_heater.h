@@ -104,6 +104,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   
   // External temperature sensor
   void set_external_temperature_sensor(sensor::Sensor *sensor) { external_temperature_sensor_ = sensor; }
+  void set_external_temperature_timeout(uint32_t timeout_ms) { external_temperature_timeout_ms_ = timeout_ms; }
   
   // Sensor setters - removed duplicate set_temperature_sensor
   void set_input_voltage_sensor(sensor::Sensor *sensor) { input_voltage_sensor_ = sensor; }
@@ -141,9 +142,10 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   bool is_manual_mode() const { return control_mode_ == ControlMode::MANUAL; }
   bool is_antifreeze_mode() const { return control_mode_ == ControlMode::ANTIFREEZE; }
   float get_external_temperature() const { return external_temperature_; }
-  bool has_external_sensor() const { 
-    return external_temperature_sensor_ != nullptr && 
-           !std::isnan(external_temperature_); 
+  bool has_external_sensor() const {
+    return external_temperature_sensor_ != nullptr &&
+           !std::isnan(external_temperature_) &&
+           !external_temperature_stale_;
   }
   
   // Status getters
@@ -244,6 +246,9 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   // Parsed sensor values
   float current_temperature_{0.0};
   float external_temperature_{NAN};
+  uint32_t external_temperature_timeout_ms_{30 * 60 * 1000};  // 0 = never treat the value as stale
+  uint32_t last_external_temperature_update_{0};
+  bool external_temperature_stale_{false};  // No new value within the timeout
   float input_voltage_{0.0};
   float heat_exchanger_temperature_{0.0};
   uint16_t fan_speed_{0};
