@@ -360,6 +360,12 @@ The midnight reset needs a time source, for example `time: - platform: homeassis
 
 ## Configuration Options
 
+### Control Mode and Saved Settings
+
+`control_mode` sets the mode used on the first boot: `manual` (heater off until turned on), `semi_auto`, `full_auto` or `antifreeze`. The older value `automatic` keeps its previous behavior and does nothing until Semi-Auto or Full-Auto is selected.
+
+Changes made from Home Assistant are saved to flash and restored after a reboot or power loss: the control mode select, the target temperature, the Manual power level and `injected_per_pulse`. For safety, "Manual" is restored as "Off", so the heater never starts unattended after a power loss; Antifreeze, Semi-Auto and Full-Auto continue on their own. If you change `control_mode`, `default_power_percent` or `injected_per_pulse` in YAML later, the new YAML value wins over the saved one.
+
 ### Antifreeze Mode Configuration
 
 Configure temperature thresholds for antifreeze protection:

@@ -37,9 +37,9 @@ void VevorHeater::setup() {
   this->current_state_ = HeaterState::OFF;
   this->heater_enabled_ = false;
   this->antifreeze_active_ = false;
-  this->auto_mode_type_ = AutoModeType::OFF;
   this->last_power_adjustment_ = millis();
   this->power_level_ = static_cast<uint8_t>(default_power_percent_ / 10.0f);  // Convert % to 1-10 scale
+  this->manual_power_level_ = this->power_level_;
   this->last_send_time_ = millis();
   this->last_received_time_ = millis();
   this->external_temperature_ = NAN;
@@ -60,6 +60,13 @@ void VevorHeater::setup() {
       this->last_external_temperature_update_ = millis();
     }
   }
+  
+  // Restore the mode and settings changed from Home Assistant. Before the fuel
+  // data, the total consumption depends on injected_per_pulse_.
+  this->yaml_mode_option_ = get_mode_option();
+  this->yaml_injected_per_pulse_ = this->injected_per_pulse_;
+  this->pref_settings_ = global_preferences->make_preference<PersistedSettings>(fnv1_hash("vevor_settings"));
+  load_settings();
   
   // Initialize fuel consumption tracking
   // current_day_ is restored from flash in load_fuel_consumption_data(). The
@@ -82,7 +89,7 @@ void VevorHeater::setup() {
   }
   
   ESP_LOGCONFIG(TAG, "Vevor Heater setup completed");
-  ESP_LOGCONFIG(TAG, "Control mode: %s", control_mode_ == ControlMode::AUTOMATIC ? "Automatic" : "Manual");
+  ESP_LOGCONFIG(TAG, "Control mode: %s", mode_option_to_string(get_mode_option()));
   ESP_LOGCONFIG(TAG, "Default power level: %.0f%%", default_power_percent_);
   ESP_LOGCONFIG(TAG, "Injected per pulse: %.2f ml", injected_per_pulse_);
   ESP_LOGCONFIG(TAG, "Daily consumption: %.2f ml", daily_consumption_ml_);
@@ -873,10 +880,11 @@ void VevorHeater::turn_on() {
   }
   
   heater_enabled_ = true;
-  // Manual mode starts at the default power. Automatic and antifreeze modes
-  // set their power right before calling turn_on(), so keep it.
+  // Manual mode starts at the Manual power (default_power_percent until the
+  // user changes it). Automatic and antifreeze modes set their power right
+  // before calling turn_on(), so keep it.
   if (control_mode_ == ControlMode::MANUAL) {
-    power_level_ = static_cast<uint8_t>(default_power_percent_ / 10.0f);
+    power_level_ = manual_power_level_;
   }
   ESP_LOGI(TAG, "Heater turned ON at %d%% power", power_level_ * 10);
 }
@@ -907,6 +915,119 @@ void VevorHeater::clear_start_lockout() {
   start_lockout_ = false;
   if (start_lockout_sensor_) {
     start_lockout_sensor_->publish_state(false);
+  }
+}
+
+const char *VevorHeater::mode_option_to_string(ModeOption option) {
+  // Must match the options of the control mode select in __init__.py
+  switch (option) {
+    case ModeOption::MANUAL: return "Manual";
+    case ModeOption::SEMI_AUTO: return "Semi-Auto";
+    case ModeOption::FULL_AUTO: return "Full-Auto";
+    case ModeOption::ANTIFREEZE: return "Antifreeze";
+    default: return "Off";
+  }
+}
+
+ModeOption VevorHeater::get_mode_option() const {
+  if (control_mode_ == ControlMode::ANTIFREEZE) {
+    return ModeOption::ANTIFREEZE;
+  }
+  if (control_mode_ == ControlMode::AUTOMATIC) {
+    if (auto_mode_type_ == AutoModeType::SEMI_AUTO) {
+      return ModeOption::SEMI_AUTO;
+    }
+    if (auto_mode_type_ == AutoModeType::FULL_AUTO) {
+      return ModeOption::FULL_AUTO;
+    }
+    return ModeOption::OFF;
+  }
+  return heater_enabled_ ? ModeOption::MANUAL : ModeOption::OFF;
+}
+
+void VevorHeater::apply_mode_option(ModeOption option) {
+  switch (option) {
+    case ModeOption::OFF:
+      set_control_mode(ControlMode::MANUAL);
+      set_auto_mode_type(AutoModeType::OFF);
+      turn_off();
+      break;
+    case ModeOption::MANUAL:
+      set_control_mode(ControlMode::MANUAL);
+      set_auto_mode_type(AutoModeType::OFF);
+      turn_on();
+      break;
+    case ModeOption::SEMI_AUTO:
+      set_control_mode(ControlMode::AUTOMATIC);
+      set_auto_mode_type(AutoModeType::SEMI_AUTO);
+      break;
+    case ModeOption::FULL_AUTO:
+      set_control_mode(ControlMode::AUTOMATIC);
+      set_auto_mode_type(AutoModeType::FULL_AUTO);
+      break;
+    case ModeOption::ANTIFREEZE:
+      set_control_mode(ControlMode::ANTIFREEZE);
+      set_auto_mode_type(AutoModeType::OFF);
+      break;
+  }
+  ESP_LOGI(TAG, "Control Mode: %s", mode_option_to_string(option));
+}
+
+void VevorHeater::select_mode_option(ModeOption option) {
+  // Any explicit mode selection by the user acknowledges a start lockout
+  clear_start_lockout();
+  apply_mode_option(option);
+  save_settings();
+}
+
+void VevorHeater::set_manual_power_percent(float percent) {
+  manual_power_level_ = static_cast<uint8_t>(std::max(1.0f, std::min(10.0f, percent / 10.0f)));
+  set_power_level_percent(percent);
+  save_settings();
+}
+
+void VevorHeater::save_settings() {
+  PersistedSettings settings;
+  settings.mode_option = static_cast<uint8_t>(get_mode_option());
+  settings.yaml_mode_option = static_cast<uint8_t>(yaml_mode_option_);
+  settings.manual_power_level = manual_power_level_;
+  settings.yaml_default_power_percent = default_power_percent_;
+  settings.target_temperature = target_temperature_;
+  settings.injected_per_pulse = injected_per_pulse_;
+  settings.yaml_injected_per_pulse = yaml_injected_per_pulse_;
+  if (!pref_settings_.save(&settings)) {
+    ESP_LOGW(TAG, "Failed to save settings");
+  }
+}
+
+void VevorHeater::load_settings() {
+  PersistedSettings settings;
+  if (!pref_settings_.load(&settings)) {
+    ESP_LOGD(TAG, "No saved settings, using YAML configuration");
+    return;
+  }
+  
+  // A value from YAML that changed since the save wins over the saved one
+  if (settings.yaml_mode_option == static_cast<uint8_t>(yaml_mode_option_) &&
+      settings.mode_option <= static_cast<uint8_t>(ModeOption::ANTIFREEZE)) {
+    ModeOption option = static_cast<ModeOption>(settings.mode_option);
+    // Never turn the heater on unattended after a reboot or power loss
+    if (option == ModeOption::MANUAL) {
+      option = ModeOption::OFF;
+    }
+    ESP_LOGI(TAG, "Restoring control mode %s", mode_option_to_string(option));
+    apply_mode_option(option);
+  }
+  if (std::isfinite(settings.target_temperature)) {
+    target_temperature_ = settings.target_temperature;
+  }
+  if (settings.yaml_default_power_percent == default_power_percent_ &&
+      settings.manual_power_level >= 1 && settings.manual_power_level <= 10) {
+    manual_power_level_ = settings.manual_power_level;
+  }
+  if (settings.yaml_injected_per_pulse == yaml_injected_per_pulse_ &&
+      std::isfinite(settings.injected_per_pulse) && settings.injected_per_pulse > 0.0f) {
+    injected_per_pulse_ = settings.injected_per_pulse;
   }
 }
 

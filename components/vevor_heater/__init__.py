@@ -54,6 +54,8 @@ CONF_TARGET_TEMPERATURE_NUMBER = "target_temperature_number"
 CONTROL_MODE_MANUAL = "manual"
 CONTROL_MODE_AUTOMATIC = "automatic"
 CONTROL_MODE_ANTIFREEZE = "antifreeze"
+CONTROL_MODE_SEMI_AUTO = "semi_auto"
+CONTROL_MODE_FULL_AUTO = "full_auto"
 
 # Sensor configuration keys - removed CONF_TEMPERATURE (duplicate)
 CONF_INPUT_VOLTAGE = "input_voltage"
@@ -209,7 +211,13 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
             cv.Optional(CONF_AUTO_SENSORS, default=True): cv.boolean,
             cv.Optional(CONF_CONTROL_MODE, default=CONTROL_MODE_MANUAL): cv.enum(
-                {CONTROL_MODE_MANUAL: "manual", CONTROL_MODE_AUTOMATIC: "automatic", CONTROL_MODE_ANTIFREEZE: "antifreeze"},
+                {
+                    CONTROL_MODE_MANUAL: "manual",
+                    CONTROL_MODE_AUTOMATIC: "automatic",
+                    CONTROL_MODE_ANTIFREEZE: "antifreeze",
+                    CONTROL_MODE_SEMI_AUTO: "semi_auto",
+                    CONTROL_MODE_FULL_AUTO: "full_auto",
+                },
                 upper=False
             ),
             cv.Optional(CONF_DEFAULT_POWER_PERCENT, default=80.0): cv.float_range(
@@ -331,6 +339,10 @@ async def to_code(config):
         cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::AUTOMATIC")))
     elif control_mode == CONTROL_MODE_ANTIFREEZE:
         cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::ANTIFREEZE")))
+    elif control_mode in (CONTROL_MODE_SEMI_AUTO, CONTROL_MODE_FULL_AUTO):
+        auto_type = "SEMI_AUTO" if control_mode == CONTROL_MODE_SEMI_AUTO else "FULL_AUTO"
+        cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::AUTOMATIC")))
+        cg.add(var.set_auto_mode_type(cg.RawExpression(f"esphome::vevor_heater::AutoModeType::{auto_type}")))
     else:
         cg.add(var.set_control_mode(cg.RawExpression("esphome::vevor_heater::ControlMode::MANUAL")))
     
