@@ -3,7 +3,7 @@ substitutions:
   friendly_name: esp32c3-workshop-heater
 
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.3.0
+  - source: github://zatakon/esphome-vevor-heater@v1.3.1
     components: [vevor_heater]
 
 esphome:

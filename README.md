@@ -88,7 +88,7 @@ external_components:
 **Specific version (for stability):**
 ```yaml
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.3.0
+  - source: github://zatakon/esphome-vevor-heater@v1.3.1
     components: [vevor_heater]
 ```
 
@@ -232,8 +232,6 @@ vevor_heater:
   # Optional: Add integrated controls
   control_mode_select:
     name: "Heater Control Mode"
-  power_switch:
-    name: "Heater Power"
   power_level_number:
     name: "Heater Power Level"
   reset_total_consumption_button:
@@ -241,8 +239,7 @@ vevor_heater:
 ```
 
 **Integrated Controls:**
-- **Control Mode Select**: Switch between Manual and Antifreeze modes in Home Assistant
-- **Power Switch**: Turn heater on/off (only works in Manual mode)
+- **Control Mode Select**: Off, Manual, Semi-Auto, Full-Auto or Antifreeze. "Off" turns the heater off, "Manual" turns it on at `default_power_percent`
 - **Power Level Number**: Adjust power 10-100% (only works in Manual mode)
 - **Reset Button**: Reset total fuel consumption counter
 
@@ -443,16 +440,14 @@ vevor_heater:
   
   # Optional control components
   control_mode_select:
-    name: "Control Mode"           # Manual/Antifreeze selector
-  power_switch:
-    name: "Power"                  # On/off control (manual mode only)
+    name: "Control Mode"           # Off/Manual/Semi-Auto/Full-Auto/Antifreeze
   power_level_number:
     name: "Power Level"            # 10-100% control (manual mode only)
   reset_total_consumption_button:
     name: "Reset Total Consumption"
 ```
 
-**Note:** Power switch and power level only function in Manual mode. In Antifreeze mode, these controls are disabled.
+**Note:** The separate `power_switch` was removed; the heater is turned on and off with the "Manual" and "Off" options of the control mode select, or with `id(my_heater).turn_on()` / `turn_off()` from a template switch. Power level only functions in Manual mode.
 
 ### Low Voltage Protection
 
@@ -464,8 +459,8 @@ vevor_heater:
   uart_id: heater_uart
   
   # Optional voltage thresholds (defaults shown)
-  min_voltage_start: 10.5        # Minimum voltage to allow starting
-  min_voltage_operate: 10.0      # Minimum voltage during operation
+  min_voltage_start: 12.3        # Minimum voltage to allow starting
+  min_voltage_operate: 11.4      # Minimum voltage during operation
 ```
 
 The heater will refuse to start below `min_voltage_start` and will shut down if voltage drops below `min_voltage_operate`.
@@ -553,10 +548,11 @@ The heater reports these states:
 | State | Description |
 |-------|-------------|
 | `Off` | Heater is off |
-| `Glow Plug Preheat` | Just started |
-| `heating up` | Preparing for ignition |
+| `Getting state` | Short state reported right after a start or status request |
+| `Heating Up` | Glow plug and ignition phase |
 | `Stable Combustion` | Running normally, fuel injected |
 | `Stopping/Cooling` | Shutting down safely |
+| `Unknown` | State byte not recognized |
 | `Disconnected` | Communication lost |
 
 ## API Reference

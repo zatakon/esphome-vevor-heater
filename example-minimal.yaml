@@ -23,7 +23,7 @@ captive_portal:
 
 # Add the library
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.3.0
+  - source: github://zatakon/esphome-vevor-heater@v1.3.1
     components: [vevor_heater]
 
 # UART for heater communication
