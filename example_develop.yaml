@@ -71,9 +71,7 @@ vevor_heater:
   
   # Optional: Add integrated controls (v1.3.0+)
   control_mode_select:
-    name: "Heater Control Mode"
-  power_switch:
-    name: "Heater Power"
+    name: "Heater Control Mode"   # "Manual" turns the heater on, "Off" turns it off
   power_level_number:
     name: "Heater Power Level"
   reset_total_consumption_button:
