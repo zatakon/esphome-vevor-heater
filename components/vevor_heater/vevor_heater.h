@@ -187,7 +187,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void save_fuel_consumption_data();
   void load_fuel_consumption_data();
   void check_daily_reset();
-  uint32_t get_days_since_epoch();
+  uint32_t get_current_day_id();
   
   // Communication state
   std::vector<uint8_t> rx_buffer_;
@@ -237,7 +237,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   float last_pump_frequency_{0.0};
   uint32_t last_consumption_update_{0};
   float daily_consumption_ml_{0.0};
-  uint32_t current_day_{0};
+  uint32_t current_day_{0};  // Day id the daily counter belongs to, 0 = unknown
   float total_fuel_pulses_{0.0};  // Keep as float to avoid precision loss
   float total_consumption_ml_{0.0};  // Lifetime total consumption
   ESPPreferenceObject pref_fuel_consumption_;

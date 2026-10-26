@@ -357,6 +357,8 @@ vevor_heater:
 
 The fuel counter automatically resets daily consumption at midnight and saves total consumption data to flash memory to survive reboots.
 
+The midnight reset needs a time source, for example `time: - platform: homeassistant` (with `timezone:` for local midnight) referenced by `time_id:` in `vevor_heater`. After a reboot the daily value is restored from flash and kept until the time is synced; only then it is compared with the current date. Without any time source the daily counter is never reset.
+
 ## Configuration Options
 
 ### Antifreeze Mode Configuration

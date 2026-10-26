@@ -45,8 +45,10 @@ void VevorHeater::setup() {
   this->external_temperature_ = NAN;
   
   // Initialize fuel consumption tracking
+  // current_day_ is restored from flash in load_fuel_consumption_data(). The
+  // time is usually not synced yet at this point, so the day is only compared
+  // later in check_daily_reset().
   this->last_consumption_update_ = millis();
-  this->current_day_ = get_days_since_epoch();
   
   // Setup persistent storage for fuel consumption
   this->pref_fuel_consumption_ = global_preferences->make_preference<FuelConsumptionData>(fnv1_hash("fuel_consumption"));
@@ -417,7 +419,20 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
 }
 
 void VevorHeater::check_daily_reset() {
-  uint32_t today = get_days_since_epoch();
+  uint32_t today = get_current_day_id();
+  if (today == 0) {
+    // Time not known yet - keep adding to the value restored from flash
+    return;
+  }
+  
+  if (current_day_ == 0) {
+    // First valid time on a device without a stored day - adopt it, no reset
+    ESP_LOGI(TAG, "Daily consumption counter assigned to day id %" PRIu32, today);
+    current_day_ = today;
+    save_fuel_consumption_data();
+    return;
+  }
+  
   if (today != current_day_) {
     ESP_LOGI(TAG, "New day detected, resetting daily consumption counter");
     current_day_ = today;
@@ -430,20 +445,19 @@ void VevorHeater::check_daily_reset() {
   }
 }
 
-uint32_t VevorHeater::get_days_since_epoch() {
+uint32_t VevorHeater::get_current_day_id() {
+  // Day identifier: year * 400 + day_of_year (1-366) in local time, so it
+  // changes at local midnight when a timezone is configured. Returns 0 while
+  // the time is not known yet.
 #ifdef USE_TIME
   // Try to use ESPHome time component if available
   if (time_component_ != nullptr) {
     auto now = time_component_->now();
     if (now.is_valid()) {
-      // Use year and day_of_year from local timezone (SNTP with timezone handles this)
-      // ESPTime fields are already adjusted to configured timezone, so day_of_year changes at local midnight
       if (time_sync_warning_shown_) {
         ESP_LOGI(TAG, "Time synced successfully via time component");
         time_sync_warning_shown_ = false;  // Reset flag
       }
-      // Return unique day identifier: year * 400 + day_of_year
-      // This changes at local midnight when timezone is properly configured
       return now.year * 400 + now.day_of_year;
     } else {
       ESP_LOGVV(TAG, "Time component present but time not valid yet");
@@ -451,30 +465,28 @@ uint32_t VevorHeater::get_days_since_epoch() {
   }
 #endif
   
-  // Fallback to system time - HomeAssistant API automatically syncs this
+  // Fallback to system time, which is set by any ESPHome time component
   std::time_t now = std::time(nullptr);
   ESP_LOGVV(TAG, "System time value: %ld", (long)now);
   
-  // Check if system time is synced (via Home Assistant API or SNTP)
-  // System time will be synced once Home Assistant connects
   if (now < 1609459200) {  // If time is before 2021-01-01, it's not synced yet
-    // If time is not synced yet, fall back to millis-based calculation
     // Only show info message once
     if (!time_sync_warning_shown_) {
-      ESP_LOGI(TAG, "Waiting for time sync (via Home Assistant or time component). Using millis() for now.");
+      ESP_LOGI(TAG, "Waiting for time sync, daily consumption reset is paused until then");
       time_sync_warning_shown_ = true;
     }
-    return millis() / (24 * 60 * 60 * 1000UL);
+    return 0;
   }
   
   // Time is now synced
   if (time_sync_warning_shown_) {
-    ESP_LOGI(TAG, "System time synced successfully via Home Assistant");
+    ESP_LOGI(TAG, "System time synced successfully");
     time_sync_warning_shown_ = false;  // Reset flag
   }
-  // Calculate days since Unix epoch (1970-01-01)
-  // This will reset at midnight UTC
-  return now / (24 * 60 * 60);
+  // Same scheme as above; localtime follows the TZ set by a time component
+  struct tm local_tm;
+  localtime_r(&now, &local_tm);
+  return (local_tm.tm_year + 1900) * 400 + local_tm.tm_yday + 1;
 }
 
 void VevorHeater::save_fuel_consumption_data() {
@@ -484,7 +496,7 @@ void VevorHeater::save_fuel_consumption_data() {
   data.total_pulses = total_fuel_pulses_;
   
   if (pref_fuel_consumption_.save(&data)) {
-    ESP_LOGD(TAG, "Fuel consumption data saved: %.2f ml, day %d", 
+    ESP_LOGD(TAG, "Fuel consumption data saved: %.2f ml, day id %" PRIu32,
              data.daily_consumption_ml, data.last_reset_day);
   } else {
     ESP_LOGW(TAG, "Failed to save fuel consumption data");
@@ -494,19 +506,17 @@ void VevorHeater::save_fuel_consumption_data() {
 void VevorHeater::load_fuel_consumption_data() {
   FuelConsumptionData data;
   if (pref_fuel_consumption_.load(&data)) {
-    // Check if it's the same day
-    uint32_t today = get_days_since_epoch();
-    if (data.last_reset_day == today) {
-      daily_consumption_ml_ = data.daily_consumption_ml;
-      ESP_LOGI(TAG, "Loaded fuel consumption data: %.2f ml for today", daily_consumption_ml_);
-    } else {
-      daily_consumption_ml_ = 0.0f;
-      ESP_LOGI(TAG, "New day detected, starting with 0 ml consumption");
-    }
+    // Restore the value together with the day it belongs to. Whether it is
+    // still today is decided in check_daily_reset() once the time is synced.
+    daily_consumption_ml_ = data.daily_consumption_ml;
+    current_day_ = data.last_reset_day;
+    ESP_LOGI(TAG, "Loaded fuel consumption data: %.2f ml for day id %" PRIu32,
+             daily_consumption_ml_, current_day_);
     total_fuel_pulses_ = data.total_pulses;
   } else {
     ESP_LOGI(TAG, "No fuel consumption data found, starting fresh");
     daily_consumption_ml_ = 0.0f;
+    current_day_ = 0;
     total_fuel_pulses_ = 0;
   }
   
@@ -936,6 +946,9 @@ void VevorHeater::dump_config() {
   ESP_LOGCONFIG(TAG, "  Target Temperature: %.1f°C", target_temperature_);
   ESP_LOGCONFIG(TAG, "  Injected per Pulse: %.2f ml", injected_per_pulse_);
   ESP_LOGCONFIG(TAG, "  Daily Consumption: %.2f ml", daily_consumption_ml_);
+  if (time_component_ == nullptr) {
+    ESP_LOGCONFIG(TAG, "  Time ID: not set - daily reset relies on the system clock being synced");
+  }
   ESP_LOGCONFIG(TAG, "  Total Fuel Pulses: %.1f", total_fuel_pulses_);
   
   if (external_temperature_sensor_ != nullptr) {
