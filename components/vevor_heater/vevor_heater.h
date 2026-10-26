@@ -67,11 +67,18 @@ static const uint32_t COMMUNICATION_TIMEOUT_MS = 5000;
 static const uint32_t SEND_INTERVAL_MS = 1000;
 static const uint32_t DEFAULT_POLLING_INTERVAL_MS = 300000; // 1 minute when not heating
 
+// Fuel consumption data as stored by older versions, only read once to migrate it
+struct FuelConsumptionDataV1 {
+  float daily_consumption_ml;
+  uint32_t last_reset_day;
+  float total_pulses;
+};
+
 // Fuel consumption tracking structure for persistence
 struct FuelConsumptionData {
   float daily_consumption_ml;
   uint32_t last_reset_day;
-  float total_pulses;  // Keep as float to avoid precision loss
+  double total_pulses;  // A float stops adding small increments above ~16.7 million pulses
 };
 
 // Options of the control mode select, also stored in flash
@@ -300,7 +307,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   uint32_t last_consumption_update_{0};
   float daily_consumption_ml_{0.0};
   uint32_t current_day_{0};  // Day id the daily counter belongs to, 0 = unknown
-  float total_fuel_pulses_{0.0};  // Keep as float to avoid precision loss
+  double total_fuel_pulses_{0.0};  // double: a float loses small increments once the total is large
   float total_consumption_ml_{0.0};  // Lifetime total consumption
   ESPPreferenceObject pref_fuel_consumption_;
   

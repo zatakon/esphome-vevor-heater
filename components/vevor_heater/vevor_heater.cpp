@@ -75,7 +75,7 @@ void VevorHeater::setup() {
   this->last_consumption_update_ = millis();
   
   // Setup persistent storage for fuel consumption
-  this->pref_fuel_consumption_ = global_preferences->make_preference<FuelConsumptionData>(fnv1_hash("fuel_consumption"));
+  this->pref_fuel_consumption_ = global_preferences->make_preference<FuelConsumptionData>(fnv1_hash("fuel_consumption_v2"));
   load_fuel_consumption_data();
   
   // Initialize hourly consumption sensor with initial value
@@ -451,7 +451,7 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
       
       // Update daily consumption counter
       daily_consumption_ml_ += consumed_ml;
-      total_fuel_pulses_ += pulses;  // Keep as float for precision
+      total_fuel_pulses_ += pulses;
       
       // Update total consumption
       total_consumption_ml_ = total_fuel_pulses_ * injected_per_pulse_;
@@ -572,7 +572,22 @@ void VevorHeater::save_fuel_consumption_data() {
 
 void VevorHeater::load_fuel_consumption_data() {
   FuelConsumptionData data;
-  if (pref_fuel_consumption_.load(&data)) {
+  bool loaded = pref_fuel_consumption_.load(&data);
+  if (!loaded) {
+    // Older versions stored total_pulses as a float under another key
+    FuelConsumptionDataV1 old_data;
+    ESPPreferenceObject old_pref =
+        global_preferences->make_preference<FuelConsumptionDataV1>(fnv1_hash("fuel_consumption"));
+    if (old_pref.load(&old_data)) {
+      data.daily_consumption_ml = old_data.daily_consumption_ml;
+      data.last_reset_day = old_data.last_reset_day;
+      data.total_pulses = old_data.total_pulses;
+      loaded = true;
+      ESP_LOGI(TAG, "Migrated fuel consumption data from the previous storage format");
+      pref_fuel_consumption_.save(&data);
+    }
+  }
+  if (loaded) {
     // Restore the value together with the day it belongs to. Whether it is
     // still today is decided in check_daily_reset() once the time is synced.
     daily_consumption_ml_ = data.daily_consumption_ml;
