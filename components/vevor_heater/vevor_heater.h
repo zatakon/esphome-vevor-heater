@@ -147,6 +147,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   
   // Status getters
   HeaterState get_heater_state() const { return current_state_; }
+  float get_power_level_percent() const { return power_level_ * 10.0f; }
+  float get_target_temperature() const { return target_temperature_; }
   float get_current_temperature() const { return current_temperature_; }
   bool is_heating() const { 
     return current_state_ == HeaterState::POLLING_STATE || 
@@ -320,7 +322,7 @@ class VevorHeaterPowerLevelNumber : public number::Number, public Component {
   
   void setup() override {
     if (heater_) {
-      this->publish_state(80.0f);  // Default power level
+      this->publish_state(heater_->get_power_level_percent());
     }
   }
   
@@ -410,7 +412,7 @@ class VevorTargetTemperatureNumber : public number::Number, public Component {
   
   void setup() override {
     if (heater_) {
-      this->publish_state(20.0f);  // Default target temperature
+      this->publish_state(heater_->get_target_temperature());
     }
   }
   
