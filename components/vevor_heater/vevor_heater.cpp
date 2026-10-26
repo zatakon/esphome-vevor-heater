@@ -333,10 +333,14 @@ void VevorHeater::update_sensors(const std::vector<uint8_t> &frame) {
   }
   
   // Input voltage (byte 11)
+  // Parsed even without a sensor, the voltage protection depends on it
   uint8_t voltage_raw = frame[11];
-  if (input_voltage_sensor_ && voltage_raw > 0) {
+  if (voltage_raw > 0) {
     input_voltage_ = voltage_raw / 10.0f;
-    input_voltage_sensor_->publish_state(input_voltage_);
+    voltage_valid_ = true;
+    if (input_voltage_sensor_) {
+      input_voltage_sensor_->publish_state(input_voltage_);
+    }
   }
   
   // Glow plug current (byte 13)
@@ -578,46 +582,65 @@ void VevorHeater::reset_total_consumption() {
 }
 
 void VevorHeater::check_voltage_safety() {
-  bool voltage_error = false;
+  if (!voltage_valid_) {
+    return;  // No heater frame with the input voltage yet
+  }
   
   // Check voltage thresholds based on state
-  if ((current_state_ == HeaterState::OFF || current_state_ == HeaterState::POLLING_STATE) && 
+  if ((current_state_ == HeaterState::OFF || current_state_ == HeaterState::POLLING_STATE) &&
       heater_enabled_) {
     // During OFF/POLLING_STATE, check if voltage is sufficient to start
     if (input_voltage_ < min_voltage_start_) {
-      ESP_LOGW(TAG, "Low voltage detected during start: %.1fV < %.1fV", 
+      ESP_LOGW(TAG, "Low voltage detected during start: %.1fV < %.1fV",
                input_voltage_, min_voltage_start_);
-      voltage_error = true;
       heater_enabled_ = false;  // Prevent starting
+      set_low_voltage_lockout();
     }
-  } else if (current_state_ == HeaterState::STABLE_COMBUSTION) {
+  } else if (current_state_ == HeaterState::STABLE_COMBUSTION && heater_enabled_) {
     // During stable combustion, check if voltage is sufficient to keep running
     if (input_voltage_ < min_voltage_operate_) {
-      ESP_LOGW(TAG, "Low voltage detected during operation: %.1fV < %.1fV - Stopping heater", 
+      ESP_LOGW(TAG, "Low voltage detected during operation: %.1fV < %.1fV - Stopping heater",
                input_voltage_, min_voltage_operate_);
-      voltage_error = true;
       heater_enabled_ = false;  // Force stop
+      set_low_voltage_lockout();
     }
   }
   
-  // Update error state
-  if (voltage_error != low_voltage_error_) {
-    low_voltage_error_ = voltage_error;
+  // Without load the battery recovers quickly and a restart would pull it down
+  // again, so release only after the delay and with some margin above the
+  // start threshold
+  if (low_voltage_lockout_ && millis() - low_voltage_lockout_since_ >= low_voltage_restart_delay_ms_ &&
+      input_voltage_ >= min_voltage_start_ + LOW_VOLTAGE_RESTART_HYSTERESIS) {
+    ESP_LOGI(TAG, "Voltage recovered to %.1fV, low voltage lockout released", input_voltage_);
+    low_voltage_lockout_ = false;
+  }
+  
+  update_low_voltage_error_sensor();
+}
+
+void VevorHeater::set_low_voltage_lockout() {
+  if (low_voltage_lockout_) {
+    return;
+  }
+  low_voltage_lockout_ = true;
+  low_voltage_lockout_since_ = millis();
+  ESP_LOGW(TAG, "Low voltage lockout: automatic starts blocked for at least %" PRIu32 " s and until %.1fV",
+           low_voltage_restart_delay_ms_ / 1000, min_voltage_start_ + LOW_VOLTAGE_RESTART_HYSTERESIS);
+}
+
+void VevorHeater::update_low_voltage_error_sensor() {
+  // The error stays on for the whole lockout, not just for one update cycle
+  if (low_voltage_error_ != low_voltage_lockout_) {
+    low_voltage_error_ = low_voltage_lockout_;
     if (low_voltage_error_sensor_) {
       low_voltage_error_sensor_->publish_state(low_voltage_error_);
-    }
-  } else if (!voltage_error && low_voltage_error_) {
-    // Clear error if voltage has recovered
-    low_voltage_error_ = false;
-    if (low_voltage_error_sensor_) {
-      low_voltage_error_sensor_->publish_state(false);
     }
   }
 }
 
 void VevorHeater::handle_antifreeze_mode() {
-  // No automatic restarts while a start lockout is active
-  if (start_lockout_) {
+  // No automatic restarts while a start or low voltage lockout is active
+  if (start_lockout_ || low_voltage_lockout_) {
     return;
   }
   
@@ -796,14 +819,24 @@ void VevorHeater::turn_on() {
   }
   
   // Check voltage before allowing start
-  if (input_voltage_ < min_voltage_start_) {
-    ESP_LOGW(TAG, "Cannot start heater: voltage too low (%.1fV < %.1fV)", 
-             input_voltage_, min_voltage_start_);
-    low_voltage_error_ = true;
-    if (low_voltage_error_sensor_) {
-      low_voltage_error_sensor_->publish_state(true);
-    }
+  if (!voltage_valid_) {
+    ESP_LOGD(TAG, "Cannot start heater yet: no input voltage received from the heater");
     return;
+  }
+  if (input_voltage_ < min_voltage_start_) {
+    ESP_LOGW(TAG, "Cannot start heater: voltage too low (%.1fV < %.1fV)",
+             input_voltage_, min_voltage_start_);
+    set_low_voltage_lockout();
+    update_low_voltage_error_sensor();
+    return;
+  }
+  
+  // Automatic modes skip their logic during a low voltage lockout, so this is
+  // a user request with enough voltage - end the lockout early
+  if (low_voltage_lockout_) {
+    ESP_LOGI(TAG, "Low voltage lockout cleared by user turn on at %.1fV", input_voltage_);
+    low_voltage_lockout_ = false;
+    update_low_voltage_error_sensor();
   }
   
   heater_enabled_ = true;
@@ -872,8 +905,8 @@ float VevorHeater::calculate_power_for_temp_diff(float temp_diff) {
 }
 
 void VevorHeater::handle_automatic_mode() {
-  // No automatic restarts while a start lockout is active
-  if (start_lockout_) {
+  // No automatic restarts while a start or low voltage lockout is active
+  if (start_lockout_ || low_voltage_lockout_) {
     return;
   }
   
@@ -1006,6 +1039,8 @@ void VevorHeater::dump_config() {
     ESP_LOGCONFIG(TAG, "  Auto Mode Type: %s", auto_type_str);
   }
   ESP_LOGCONFIG(TAG, "  Default Power Level: %.0f%%", default_power_percent_);
+  ESP_LOGCONFIG(TAG, "  Min Voltage Start/Operate: %.1fV / %.1fV, restart delay after low voltage: %" PRIu32 " s",
+                min_voltage_start_, min_voltage_operate_, low_voltage_restart_delay_ms_ / 1000);
   ESP_LOGCONFIG(TAG, "  Power Level: %d/10", power_level_);
   ESP_LOGCONFIG(TAG, "  Target Temperature: %.1f°C", target_temperature_);
   ESP_LOGCONFIG(TAG, "  Injected per Pulse: %.2f ml", injected_per_pulse_);

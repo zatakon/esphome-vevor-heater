@@ -461,9 +461,12 @@ vevor_heater:
   # Optional voltage thresholds (defaults shown)
   min_voltage_start: 12.3        # Minimum voltage to allow starting
   min_voltage_operate: 11.4      # Minimum voltage during operation
+  low_voltage_restart_delay: 30min  # Minimum pause for automatic starts after low voltage
 ```
 
 The heater will refuse to start below `min_voltage_start` and will shut down if voltage drops below `min_voltage_operate`.
+
+After such a stop or refused start, Antifreeze, Semi-Auto and Full-Auto do not start the heater again until `low_voltage_restart_delay` has passed **and** the voltage is at least 0.3 V above `min_voltage_start`. Without load a battery recovers quickly, so restarting right away would pull it down again and cycle the heater. The **Low Voltage Error** binary sensor stays on for the whole lockout. A manual `turn_on()` (or selecting "Manual") with enough voltage ends the lockout early.
 
 ### Start Lockout
 
