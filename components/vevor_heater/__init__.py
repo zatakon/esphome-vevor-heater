@@ -149,7 +149,54 @@ SENSOR_SCHEMAS = {
     ),
 }
 
+# Sensors created by auto_sensors, with the ID infix used for their generated IDs
+AUTO_SENSOR_ID_INFIX = {
+    CONF_INPUT_VOLTAGE: "sensor",
+    CONF_POWER_LEVEL: "sensor",
+    CONF_FAN_SPEED: "sensor",
+    CONF_PUMP_FREQUENCY: "sensor",
+    CONF_GLOW_PLUG_CURRENT: "sensor",
+    CONF_HEAT_EXCHANGER_TEMPERATURE: "sensor",
+    CONF_STATE_DURATION: "sensor",
+    CONF_HOURLY_CONSUMPTION: "sensor",
+    CONF_DAILY_CONSUMPTION: "sensor",
+    CONF_TOTAL_CONSUMPTION: "sensor",
+    CONF_STATE: "text_sensor",
+    CONF_COOLING_DOWN: "binary_sensor",
+    CONF_LOW_VOLTAGE_ERROR: "binary_sensor",
+}
+
+
+def _add_auto_sensors(config):
+    """Add default configs for the sensors auto_sensors should create.
+
+    This runs before the schema, so the generated sensors are validated and get
+    their IDs declared (including the MQTT component IDs) like sensors the user
+    configured. Creating them later in to_code() broke builds that use mqtt:.
+    """
+    if not isinstance(config, dict):
+        return config
+    try:
+        auto_sensors = cv.boolean(config.get(CONF_AUTO_SENSORS, True))
+    except cv.Invalid:
+        return config  # Reported by the schema
+    if not auto_sensors:
+        return config
+
+    config = config.copy()
+    for sensor_key, id_infix in AUTO_SENSOR_ID_INFIX.items():
+        if sensor_key in config:
+            continue
+        sens_config = {CONF_NAME: f"Vevor Heater {sensor_key.replace('_', ' ').title()}"}
+        if CONF_ID in config:
+            # Same IDs as earlier versions generated, so lambdas keep working
+            sens_config[CONF_ID] = f"{config[CONF_ID]}_{id_infix}_{sensor_key}"
+        config[sensor_key] = sens_config
+    return config
+
+
 CONFIG_SCHEMA = cv.All(
+    _add_auto_sensors,
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(VevorHeater),
@@ -310,98 +357,27 @@ async def to_code(config):
         external_sensor = await cg.get_variable(config[CONF_EXTERNAL_TEMPERATURE_SENSOR])
         cg.add(var.set_external_temperature_sensor(external_sensor))
 
-    # Auto-create sensors if enabled
-    if config[CONF_AUTO_SENSORS]:
-        sensors_to_create = [
-            # Removed duplicate (CONF_TEMPERATURE, "set_temperature_sensor"),
-            (CONF_INPUT_VOLTAGE, "set_input_voltage_sensor"),
-            (CONF_POWER_LEVEL, "set_power_level_sensor"),
-            (CONF_FAN_SPEED, "set_fan_speed_sensor"),
-            (CONF_PUMP_FREQUENCY, "set_pump_frequency_sensor"),
-            (CONF_GLOW_PLUG_CURRENT, "set_glow_plug_current_sensor"),
-            (CONF_HEAT_EXCHANGER_TEMPERATURE, "set_heat_exchanger_temperature_sensor"),
-            (CONF_STATE_DURATION, "set_state_duration_sensor"),
-            (CONF_HOURLY_CONSUMPTION, "set_hourly_consumption_sensor"),
-            (CONF_DAILY_CONSUMPTION, "set_daily_consumption_sensor"),
-            (CONF_TOTAL_CONSUMPTION, "set_total_consumption_sensor"),
-        ]
+    # Sensors - with auto_sensors the defaults were already added by _add_auto_sensors()
+    sensor_configs = [
+        (CONF_INPUT_VOLTAGE, "set_input_voltage_sensor", sensor.new_sensor),
+        (CONF_POWER_LEVEL, "set_power_level_sensor", sensor.new_sensor),
+        (CONF_FAN_SPEED, "set_fan_speed_sensor", sensor.new_sensor),
+        (CONF_PUMP_FREQUENCY, "set_pump_frequency_sensor", sensor.new_sensor),
+        (CONF_GLOW_PLUG_CURRENT, "set_glow_plug_current_sensor", sensor.new_sensor),
+        (CONF_HEAT_EXCHANGER_TEMPERATURE, "set_heat_exchanger_temperature_sensor", sensor.new_sensor),
+        (CONF_STATE_DURATION, "set_state_duration_sensor", sensor.new_sensor),
+        (CONF_HOURLY_CONSUMPTION, "set_hourly_consumption_sensor", sensor.new_sensor),
+        (CONF_DAILY_CONSUMPTION, "set_daily_consumption_sensor", sensor.new_sensor),
+        (CONF_TOTAL_CONSUMPTION, "set_total_consumption_sensor", sensor.new_sensor),
+        (CONF_STATE, "set_state_sensor", text_sensor.new_text_sensor),
+        (CONF_COOLING_DOWN, "set_cooling_down_sensor", binary_sensor.new_binary_sensor),
+        (CONF_LOW_VOLTAGE_ERROR, "set_low_voltage_error_sensor", binary_sensor.new_binary_sensor),
+    ]
 
-        text_sensors_to_create = [
-            (CONF_STATE, "set_state_sensor"),
-        ]
-
-        binary_sensors_to_create = [
-            (CONF_COOLING_DOWN, "set_cooling_down_sensor"),
-            (CONF_LOW_VOLTAGE_ERROR, "set_low_voltage_error_sensor"),
-        ]
-
-        # Create regular sensors
-        for sensor_key, setter_method in sensors_to_create:
-            if sensor_key in config:
-                # Use user-provided configuration
-                sens_config = config[sensor_key]
-            else:
-                # Use default configuration with automatic naming and ID
-                sens_config = {
-                    CONF_ID: cg.RawExpression(f"{config[CONF_ID]}_sensor_{sensor_key}"),
-                    CONF_NAME: f"Vevor Heater {sensor_key.replace('_', ' ').title()}"
-                }
-                # Apply the schema to get proper defaults
-                sens_config = SENSOR_SCHEMAS[sensor_key](sens_config)
-            
-            sens = await sensor.new_sensor(sens_config)
+    for sensor_key, setter_method, new_sensor_func in sensor_configs:
+        if sensor_key in config:
+            sens = await new_sensor_func(config[sensor_key])
             cg.add(getattr(var, setter_method)(sens))
-
-        # Create text sensors
-        for sensor_key, setter_method in text_sensors_to_create:
-            if sensor_key in config:
-                sens_config = config[sensor_key]
-            else:
-                sens_config = {
-                    CONF_ID: cg.RawExpression(f"{config[CONF_ID]}_text_sensor_{sensor_key}"),
-                    CONF_NAME: f"Vevor Heater {sensor_key.replace('_', ' ').title()}"
-                }
-                sens_config = SENSOR_SCHEMAS[sensor_key](sens_config)
-            
-            sens = await text_sensor.new_text_sensor(sens_config)
-            cg.add(getattr(var, setter_method)(sens))
-
-        # Create binary sensors
-        for sensor_key, setter_method in binary_sensors_to_create:
-            if sensor_key in config:
-                sens_config = config[sensor_key]
-            else:
-                sens_config = {
-                    CONF_ID: cg.RawExpression(f"{config[CONF_ID]}_binary_sensor_{sensor_key}"),
-                    CONF_NAME: f"Vevor Heater {sensor_key.replace('_', ' ').title()}"
-                }
-                sens_config = SENSOR_SCHEMAS[sensor_key](sens_config)
-            
-            sens = await binary_sensor.new_binary_sensor(sens_config)
-            cg.add(getattr(var, setter_method)(sens))
-    else:
-        # Manual sensor configuration
-        sensor_configs = [
-            # Removed duplicate (CONF_TEMPERATURE, "set_temperature_sensor", sensor.new_sensor),
-            (CONF_INPUT_VOLTAGE, "set_input_voltage_sensor", sensor.new_sensor),
-            (CONF_POWER_LEVEL, "set_power_level_sensor", sensor.new_sensor),
-            (CONF_FAN_SPEED, "set_fan_speed_sensor", sensor.new_sensor),
-            (CONF_PUMP_FREQUENCY, "set_pump_frequency_sensor", sensor.new_sensor),
-            (CONF_GLOW_PLUG_CURRENT, "set_glow_plug_current_sensor", sensor.new_sensor),
-            (CONF_HEAT_EXCHANGER_TEMPERATURE, "set_heat_exchanger_temperature_sensor", sensor.new_sensor),
-            (CONF_STATE_DURATION, "set_state_duration_sensor", sensor.new_sensor),
-            (CONF_HOURLY_CONSUMPTION, "set_hourly_consumption_sensor", sensor.new_sensor),
-            (CONF_DAILY_CONSUMPTION, "set_daily_consumption_sensor", sensor.new_sensor),
-            (CONF_TOTAL_CONSUMPTION, "set_total_consumption_sensor", sensor.new_sensor),
-            (CONF_STATE, "set_state_sensor", text_sensor.new_text_sensor),
-            (CONF_COOLING_DOWN, "set_cooling_down_sensor", binary_sensor.new_binary_sensor),
-            (CONF_LOW_VOLTAGE_ERROR, "set_low_voltage_error_sensor", binary_sensor.new_binary_sensor),
-        ]
-
-        for sensor_key, setter_method, new_sensor_func in sensor_configs:
-            if sensor_key in config:
-                sens = await new_sensor_func(config[sensor_key])
-                cg.add(getattr(var, setter_method)(sens))
 
     # Number component for injected per pulse
     if CONF_INJECTED_PER_PULSE_NUMBER in config:
