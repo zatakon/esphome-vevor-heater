@@ -7,11 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Semi-Auto and Full-Auto modes**: temperature-based power control (Semi-Auto) and power plus on/off control (Full-Auto) with an external temperature sensor; `control_mode: semi_auto` / `full_auto` in YAML
+- **Start Lockout**: no automatic restart after the heater stops on its own (failed ignition, flame-out), new "Start Lockout" problem binary sensor
+- **Low voltage restart delay**: after a low voltage stop, automatic modes wait `low_voltage_restart_delay` (default 30 min) and 0.3 V above `min_voltage_start` before starting again
+- **External temperature timeout**: a value that stops updating counts as unavailable after `external_temperature_timeout` (default 30 min)
+- **Saved settings**: control mode, target temperature, Manual power and `injected_per_pulse` changed from Home Assistant survive a reboot ("Manual" is restored as "Off")
+
+### Fixed
+- Builds with `mqtt:` failed with "Component ID was not declared" (#7)
+- Daily consumption was reset on every reboot
+- Semi-Auto increased power when the room was above target
+- Frames with a bad checksum were accepted
+- Values were only parsed when their sensor was configured (no fuel counting without the pump frequency sensor)
+- Select and number entities started as "unknown" in Home Assistant
+- Automatic modes started at `default_power_percent` instead of their computed power
+- Low Voltage Error was cleared after one second
+- Total pulse counter lost precision as a float (stored data is migrated)
+
+### Changed
+- **Daily consumption** is reported in L with device class `gas` (was ml)
+- **`power_switch` removed**: use the "Manual" / "Off" options of `control_mode_select` or `turn_on()` / `turn_off()`
+- Selecting "Manual" turns the heater on at the last Manual power
+- Daily reset at local midnight uses the configured time zone; without a time source the daily counter is not reset
+
 ### Planned
-- Automatic temperature control mode with PID controller
 - Complete climate entity integration
-- Anti-freeze mode
 - Additional heater models support
+
+## [1.3.1] - 2026-01-12
+
+### Added
+- **Antifreeze mode** with configurable temperature thresholds and hysteresis
+- **Integrated controls**: control mode select, power switch, power level number and reset total consumption button
+- **Total fuel consumption** sensor
+- **Low voltage protection** with `min_voltage_start` / `min_voltage_operate`
+- Configurable `polling_interval` for status requests while the heater is off
+
+### Fixed
+- Heat exchanger temperature with negative values (signed reading)
+- Values are reported during the cooldown phase
+- Daily consumption reset uses calendar time
+
+### Changed
+- Climate integration removed for now
 
 ## [1.2.0] - 2025-10-30
 
@@ -102,6 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.3.1** - Antifreeze mode, integrated controls, low voltage protection
 - **v1.2.0** - Daily consumption sensor fix and configuration simplification
 - **v1.1.0** - Fuel consumption tracking and temperature sensor fixes
 - **v1.0.0** - Initial public release
@@ -116,6 +156,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### From 1.1.0 to 1.2.0
 - **No Breaking Changes**: This is a bug fix release. All existing configurations remain compatible.
+
+### From 1.3.1 to the next release
+- **`power_switch` removed**: remove it from YAML, use `control_mode_select` ("Manual" / "Off") or a template switch with `turn_on()` / `turn_off()`.
+- **Daily consumption unit changed from ml to L**: Home Assistant starts new long-term statistics for this sensor; update automations that compare the value.
 
 ---
 
