@@ -75,7 +75,7 @@ esphome:
   name: ${friendly_name}
   project:
     name: "zatakon.vevor-heater"
-    version: "1.3.0"  # Current library version
+    version: "2.0.0"  # Current library version
 ```
 
 The version number appears in:
@@ -83,7 +83,7 @@ The version number appears in:
 - ESPHome dashboard
 - Device logs
 
-**Current Version: 1.3.0** - Automatic mode with Semi-Auto and Full-Auto control
+**Current Version: 2.0.0** - Semi-Auto and Full-Auto modes, start lockout, saved settings. See [CHANGELOG.md](CHANGELOG.md) for breaking changes when upgrading from 1.x.
 
 ### Using Different Versions
 
@@ -97,7 +97,7 @@ external_components:
 **Specific version (for stability):**
 ```yaml
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.3.1
+  - source: github://zatakon/esphome-vevor-heater@v2.0.0
     components: [vevor_heater]
 ```
 

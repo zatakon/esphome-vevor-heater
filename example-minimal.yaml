@@ -23,7 +23,7 @@ captive_portal:
 
 # Add the library
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.3.1
+  - source: github://zatakon/esphome-vevor-heater@v2.0.0
     components: [vevor_heater]
 
 # UART for heater communication
@@ -43,7 +43,8 @@ vevor_heater:
   uart_id: heater_uart
   # Everything else is automatic with good defaults
   
-  # Optional: Add integrated power switch (v1.3.0+)
-  power_switch:
+  # Optional: Turn the heater on/off from Home Assistant
+  # ("Manual" = on, "Off" = off, plus the automatic modes)
+  control_mode_select:
     name: "Heater"
 
