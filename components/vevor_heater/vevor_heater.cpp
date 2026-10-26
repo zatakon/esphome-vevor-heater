@@ -146,7 +146,9 @@ void VevorHeater::check_uart_data() {
       
       // Check if we have enough bytes to determine frame length
       if (rx_buffer_.size() >= 4) {
-        uint8_t expected_length = (rx_buffer_[3] == HEATER_FRAME_LENGTH) ? 56 : 15;
+        // Total frame size is the length field + 5 (56 bytes heater, 16 bytes controller)
+        uint8_t expected_length = (rx_buffer_[3] == HEATER_FRAME_LENGTH) ? HEATER_FRAME_LENGTH + 5
+                                                                         : CONTROLLER_FRAME_LENGTH + 5;
         
         if (rx_buffer_.size() >= expected_length) {
           // Frame complete, process it
@@ -203,10 +205,12 @@ bool VevorHeater::validate_frame(const std::vector<uint8_t> &frame, uint8_t expe
   uint8_t received_checksum = frame[frame.size() - 1];
   
   if (calculated_checksum != received_checksum) {
-    ESP_LOGD(TAG, "Checksum mismatch: calculated 0x%02X, received 0x%02X", 
+    // A corrupted frame could carry a wrong state, voltage or pump frequency
+    // and trigger a stop, a start or bogus fuel counting, so drop it.
+    // The checksum algorithm matches all frames in the captured bus log.
+    ESP_LOGW(TAG, "Checksum mismatch: calculated 0x%02X, received 0x%02X - frame dropped",
              calculated_checksum, received_checksum);
-    // Don't reject on checksum mismatch - just log it
-    // The working version doesn't validate checksums either
+    return false;
   }
   
   return true;
@@ -262,9 +266,10 @@ void VevorHeater::send_controller_frame() {
   frame.push_back(0x00);                    // 13: Unknown
   frame.push_back(0x00);                    // 14: Unknown
   
-  // Calculate and add checksum
-  uint8_t checksum = calculate_checksum(frame);
-  frame.push_back(checksum);                // 15: Checksum
+  // Calculate and add checksum (sum of bytes 2-14, so it is computed with the
+  // checksum slot already appended)
+  frame.push_back(0x00);                    // 15: Checksum
+  frame.back() = calculate_checksum(frame);
   
   // Send frame
   this->write_array(frame.data(), frame.size());
