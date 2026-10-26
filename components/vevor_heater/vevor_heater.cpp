@@ -59,6 +59,11 @@ void VevorHeater::setup() {
     hourly_consumption_sensor_->publish_state(0.0f);
   }
   
+  // A start lockout does not survive a reboot
+  if (start_lockout_sensor_) {
+    start_lockout_sensor_->publish_state(false);
+  }
+  
   ESP_LOGCONFIG(TAG, "Vevor Heater setup completed");
   ESP_LOGCONFIG(TAG, "Control mode: %s", control_mode_ == ControlMode::AUTOMATIC ? "Automatic" : "Manual");
   ESP_LOGCONFIG(TAG, "Default power level: %.0f%%", default_power_percent_);
@@ -249,6 +254,8 @@ void VevorHeater::send_controller_frame() {
   if (!heater_enabled_) {
     if (current_state_ != HeaterState::OFF && current_state_ != HeaterState::STOPPING_COOLING) {
       frame.push_back(0x05);              // 9: Set off
+      stop_command_sent_ = true;
+      last_stop_command_time_ = millis();
     } else {
       frame.push_back(0x02);              // 9: Off
     }
@@ -288,8 +295,19 @@ void VevorHeater::process_heater_frame(const std::vector<uint8_t> &frame) {
     HeaterState new_state = static_cast<HeaterState>(state_raw);
     
     if (new_state != current_state_) {
+      HeaterState old_state = current_state_;
       current_state_ = new_state;
       ESP_LOGD(TAG, "Heater state changed to: %s", state_to_string(current_state_));
+      
+      // The heater left heating up or combustion on its own (failed ignition,
+      // flame-out, heater-side error) while we still request it to run. A stop
+      // shortly after our own stop command is expected, e.g. a quick off/on.
+      bool was_burning = old_state == HeaterState::HEATING_UP || old_state == HeaterState::STABLE_COMBUSTION;
+      bool now_stopped = new_state == HeaterState::STOPPING_COOLING || new_state == HeaterState::OFF;
+      bool stop_requested = stop_command_sent_ && (millis() - last_stop_command_time_ < STOP_RESPONSE_WINDOW_MS);
+      if (heater_enabled_ && was_burning && now_stopped && !stop_requested) {
+        trigger_start_lockout(old_state, new_state);
+      }
     }
     
     // Update all sensors
@@ -598,6 +616,11 @@ void VevorHeater::check_voltage_safety() {
 }
 
 void VevorHeater::handle_antifreeze_mode() {
+  // No automatic restarts while a start lockout is active
+  if (start_lockout_) {
+    return;
+  }
+  
   // Antifreeze mode requires external temperature sensor
   if (!has_external_sensor()) {
     ESP_LOGW(TAG, "Antifreeze mode requires external temperature sensor");
@@ -760,6 +783,10 @@ void VevorHeater::set_control_mode(ControlMode mode) {
 }
 
 void VevorHeater::turn_on() {
+  // Automatic modes skip their control logic while locked out, so this call
+  // comes from the user (select, lambda, switch) and acknowledges the lockout
+  clear_start_lockout();
+  
   // Check if automatic mode requires external sensor
   if (control_mode_ == ControlMode::AUTOMATIC) {
     if (!has_external_sensor()) {
@@ -790,6 +817,30 @@ void VevorHeater::turn_off() {
   ESP_LOGI(TAG, "Heater turned OFF");
 }
 
+void VevorHeater::trigger_start_lockout(HeaterState old_state, HeaterState new_state) {
+  // Restarting right away could pump fuel into a hot or flooded combustion
+  // chamber again, so keep the heater off until the user acts
+  ESP_LOGE(TAG, "Heater stopped on its own (%s -> %s) while requested to run - "
+                "start lockout, automatic restarts blocked until the user turns it on again",
+           state_to_string(old_state), state_to_string(new_state));
+  heater_enabled_ = false;
+  start_lockout_ = true;
+  if (start_lockout_sensor_) {
+    start_lockout_sensor_->publish_state(true);
+  }
+}
+
+void VevorHeater::clear_start_lockout() {
+  if (!start_lockout_) {
+    return;
+  }
+  ESP_LOGI(TAG, "Start lockout cleared by user");
+  start_lockout_ = false;
+  if (start_lockout_sensor_) {
+    start_lockout_sensor_->publish_state(false);
+  }
+}
+
 void VevorHeater::set_power_level_percent(float percent) {
   uint8_t level = static_cast<uint8_t>(std::max(1.0f, std::min(10.0f, percent / 10.0f)));
   if (level != power_level_) {
@@ -818,6 +869,11 @@ float VevorHeater::calculate_power_for_temp_diff(float temp_diff) {
 }
 
 void VevorHeater::handle_automatic_mode() {
+  // No automatic restarts while a start lockout is active
+  if (start_lockout_) {
+    return;
+  }
+  
   // Automatic mode requires external temperature sensor
   if (!has_external_sensor()) {
     ESP_LOGW(TAG, "Automatic mode requires external temperature sensor");
@@ -984,6 +1040,7 @@ void VevorHeater::dump_config() {
   LOG_SENSOR("  ", "Daily Consumption", daily_consumption_sensor_);
   LOG_SENSOR("  ", "Total Consumption", total_consumption_sensor_);
   LOG_BINARY_SENSOR("  ", "Low Voltage Error", low_voltage_error_sensor_);
+  LOG_BINARY_SENSOR("  ", "Start Lockout", start_lockout_sensor_);
 }
 
 }  // namespace vevor_heater

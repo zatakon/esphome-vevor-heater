@@ -324,6 +324,8 @@ When `auto_sensors: true` (default), these sensors are automatically created:
 | Glow Plug Current            | Glow plug current draw        | A    | Current      |
 | State Duration               | Time in current state         | s    | Duration     |
 | Cooling Down                 | Cooling down status           | -    | -            |
+| Low Voltage Error            | Voltage below threshold       | -    | Problem      |
+| Start Lockout                | Automatic restart blocked     | -    | Problem      |
 | Hourly Consumption           | Instantaneous fuel rate       | ml/h | -            |
 | Daily Consumption            | Total fuel consumed today     | L    | Gas          |
 | Total Consumption            | Cumulative fuel consumption   | L    | -            |
@@ -468,6 +470,18 @@ vevor_heater:
 
 The heater will refuse to start below `min_voltage_start` and will shut down if voltage drops below `min_voltage_operate`.
 
+### Start Lockout
+
+If the heater leaves heating up or stable combustion on its own while it is still requested to run (failed ignition, flame-out, empty tank or a heater-side error), the component does **not** restart it automatically. Restarting right away could pump fuel into a hot or flooded combustion chamber again.
+
+Instead it turns the heater request off and sets the **Start Lockout** binary sensor. Antifreeze, Semi-Auto and Full-Auto pause until the lockout is cleared by a user action:
+
+- selecting any option in `control_mode_select`, or
+- calling `id(my_heater).turn_on()` (for example from a template switch), or
+- rebooting the ESP.
+
+Check the heater (fuel supply, glow plug, exhaust) before clearing the lockout.
+
 ### Custom Sensor Names
 
 ```yaml
@@ -577,6 +591,7 @@ float temp = id(my_heater).get_current_temperature();
 - **Checksum Verification**: Ensures data integrity
 - **Failsafe Shutdown**: Safe heater shutdown on errors
 - **Low Voltage Protection**: Prevents starting or operation below configurable voltage thresholds
+- **Start Lockout**: No automatic restart after the heater stops on its own (failed ignition, flame-out)
 - **Antifreeze Protection**: Temperature-based automatic control with hysteresis to prevent freezing
 - **Over-temperature Protection**: Configurable via automations
 

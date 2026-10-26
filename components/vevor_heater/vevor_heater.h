@@ -118,6 +118,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_daily_consumption_sensor(sensor::Sensor *sensor) { daily_consumption_sensor_ = sensor; }
   void set_total_consumption_sensor(sensor::Sensor *sensor) { total_consumption_sensor_ = sensor; }
   void set_low_voltage_error_sensor(binary_sensor::BinarySensor *sensor) { low_voltage_error_sensor_ = sensor; }
+  void set_start_lockout_sensor(binary_sensor::BinarySensor *sensor) { start_lockout_sensor_ = sensor; }
   
   // Control methods
   void turn_on();
@@ -125,6 +126,8 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_power_level_percent(float percent);
   void reset_daily_consumption();
   void reset_total_consumption();
+  void clear_start_lockout();
+  bool is_start_locked_out() const { return start_lockout_; }
   void set_auto_mode_type(AutoModeType type) { auto_mode_type_ = type; }
   AutoModeType get_auto_mode_type() const { return auto_mode_type_; }
   
@@ -181,6 +184,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void handle_communication_timeout();
   void check_voltage_safety();
   void handle_antifreeze_mode();
+  void trigger_start_lockout(HeaterState old_state, HeaterState new_state);
   
   // Fuel consumption tracking
   void update_fuel_consumption(float pump_frequency);
@@ -213,6 +217,12 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   static constexpr float ANTIFREEZE_HYSTERESIS = 0.4f;  // Hysteresis in °C to prevent rapid cycling
   float last_antifreeze_power_{0.0f};   // Track last power level for hysteresis logic
   bool antifreeze_active_{false};       // Track if antifreeze is actively heating
+  
+  // Start lockout: set when the heater stops on its own while it should run
+  bool start_lockout_{false};
+  bool stop_command_sent_{false};       // A stop command was sent at least once
+  uint32_t last_stop_command_time_{0};  // millis() of the last stop command
+  static constexpr uint32_t STOP_RESPONSE_WINDOW_MS = 30000;  // Stops within this window after our stop command are expected
   
   // Automatic mode state
   AutoModeType auto_mode_type_{AutoModeType::OFF};  // Off, Semi-Auto, or Full-Auto
@@ -261,6 +271,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   sensor::Sensor *daily_consumption_sensor_{nullptr};
   sensor::Sensor *total_consumption_sensor_{nullptr};
   binary_sensor::BinarySensor *low_voltage_error_sensor_{nullptr};
+  binary_sensor::BinarySensor *start_lockout_sensor_{nullptr};
   number::Number *injected_per_pulse_number_{nullptr};
 };
 
@@ -360,6 +371,8 @@ class VevorControlModeSelect : public select::Select, public Component {
  protected:
   void control(const std::string &value) override {
     if (heater_) {
+      // Any explicit mode selection by the user acknowledges a start lockout
+      heater_->clear_start_lockout();
       if (value == "Off") {
         heater_->set_control_mode(ControlMode::MANUAL);
         heater_->set_auto_mode_type(AutoModeType::OFF);
