@@ -162,13 +162,13 @@ The library provides two automatic control modes for intelligent temperature-bas
 **Power Adjustment Logic (Both Modes):**
 - When heater starts, initial power is set based on current temperature difference
 - Every 20 seconds, power adjusts by ±10% maximum
-- Power levels based on temperature difference from target:
-  - < 1°C difference → 10% power
-  - 1-2°C difference → 20% power
-  - 2-3°C difference → 40% power
-  - 4-5°C difference → 60% power
-  - 5-6°C difference → 80% power
-  - > 6°C difference → 90% power
+- Power levels based on how far the temperature is below target:
+  - At or above target, or < 1°C below → 10% power
+  - 1-2°C below → 20% power
+  - 2-3°C below → 40% power
+  - 3-5°C below → 60% power
+  - 5-6°C below → 80% power
+  - > 6°C below → 90% power
 
 **Control Mode Options:**
 - **Off**: Heater completely disabled

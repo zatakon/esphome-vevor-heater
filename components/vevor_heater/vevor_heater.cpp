@@ -784,18 +784,18 @@ void VevorHeater::set_power_level_percent(float percent) {
 }
 
 float VevorHeater::calculate_power_for_temp_diff(float temp_diff) {
-  // Calculate power based on temperature difference
-  float abs_diff = std::abs(temp_diff);
-  
-  if (abs_diff < 1.0f) {
+  // Calculate power based on temperature difference (target - current).
+  // At or above target the heater only needs minimum power. Using the
+  // absolute difference here would raise power the more the room overheats.
+  if (temp_diff < 1.0f) {
     return 10.0f;
-  } else if (abs_diff < 2.0f) {
+  } else if (temp_diff < 2.0f) {
     return 20.0f;
-  } else if (abs_diff < 3.0f) {
+  } else if (temp_diff < 3.0f) {
     return 40.0f;
-  } else if (abs_diff < 5.0f) {
+  } else if (temp_diff < 5.0f) {
     return 60.0f;
-  } else if (abs_diff < 6.0f) {
+  } else if (temp_diff < 6.0f) {
     return 80.0f;
   } else {
     return 90.0f;
