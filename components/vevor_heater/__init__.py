@@ -69,6 +69,7 @@ CONF_HOURLY_CONSUMPTION = "hourly_consumption"
 CONF_DAILY_CONSUMPTION = "daily_consumption"
 CONF_TOTAL_CONSUMPTION = "total_consumption"
 CONF_LOW_VOLTAGE_ERROR = "low_voltage_error"
+CONF_START_LOCKOUT = "start_lockout"
 
 # Fuel consumption constants
 UNIT_MILLILITERS = "ml"
@@ -129,6 +130,10 @@ SENSOR_SCHEMAS = {
         icon="mdi:alert-circle",
         device_class="problem",
     ),
+    CONF_START_LOCKOUT: binary_sensor.binary_sensor_schema(
+        icon="mdi:fire-alert",
+        device_class="problem",
+    ),
     CONF_HOURLY_CONSUMPTION: sensor.sensor_schema(
         unit_of_measurement=UNIT_MILLILITERS_PER_HOUR,
         state_class=STATE_CLASS_MEASUREMENT,
@@ -164,6 +169,7 @@ AUTO_SENSOR_ID_INFIX = {
     CONF_STATE: "text_sensor",
     CONF_COOLING_DOWN: "binary_sensor",
     CONF_LOW_VOLTAGE_ERROR: "binary_sensor",
+    CONF_START_LOCKOUT: "binary_sensor",
 }
 
 
@@ -254,6 +260,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_STATE_DURATION): SENSOR_SCHEMAS[CONF_STATE_DURATION],
             cv.Optional(CONF_COOLING_DOWN): SENSOR_SCHEMAS[CONF_COOLING_DOWN],
             cv.Optional(CONF_LOW_VOLTAGE_ERROR): SENSOR_SCHEMAS[CONF_LOW_VOLTAGE_ERROR],
+            cv.Optional(CONF_START_LOCKOUT): SENSOR_SCHEMAS[CONF_START_LOCKOUT],
             cv.Optional(CONF_HOURLY_CONSUMPTION): SENSOR_SCHEMAS[CONF_HOURLY_CONSUMPTION],
             cv.Optional(CONF_DAILY_CONSUMPTION): SENSOR_SCHEMAS[CONF_DAILY_CONSUMPTION],
             cv.Optional(CONF_TOTAL_CONSUMPTION): SENSOR_SCHEMAS[CONF_TOTAL_CONSUMPTION],
@@ -372,6 +379,7 @@ async def to_code(config):
         (CONF_STATE, "set_state_sensor", text_sensor.new_text_sensor),
         (CONF_COOLING_DOWN, "set_cooling_down_sensor", binary_sensor.new_binary_sensor),
         (CONF_LOW_VOLTAGE_ERROR, "set_low_voltage_error_sensor", binary_sensor.new_binary_sensor),
+        (CONF_START_LOCKOUT, "set_start_lockout_sensor", binary_sensor.new_binary_sensor),
     ]
 
     for sensor_key, setter_method, new_sensor_func in sensor_configs:
