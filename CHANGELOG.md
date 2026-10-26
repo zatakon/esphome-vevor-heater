@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+- Complete climate entity integration
+- Additional heater models support
+
+## [2.0.0] - 2026-10-26
+
 ### Added
 - **Semi-Auto and Full-Auto modes**: temperature-based power control (Semi-Auto) and power plus on/off control (Full-Auto) with an external temperature sensor; `control_mode: semi_auto` / `full_auto` in YAML
 - **Start Lockout**: no automatic restart after the heater stops on its own (failed ignition, flame-out), new "Start Lockout" problem binary sensor
@@ -31,9 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Selecting "Manual" turns the heater on at the last Manual power
 - Daily reset at local midnight uses the configured time zone; without a time source the daily counter is not reset
 
-### Planned
-- Complete climate entity integration
-- Additional heater models support
+### Removed
+- Unfinished `climate` platform file (the climate entity is still planned)
 
 ## [1.3.1] - 2026-01-12
 
@@ -141,6 +146,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v2.0.0** - Semi-Auto and Full-Auto modes, start lockout, low voltage restart delay, saved settings, MQTT build fix
 - **v1.3.1** - Antifreeze mode, integrated controls, low voltage protection
 - **v1.2.0** - Daily consumption sensor fix and configuration simplification
 - **v1.1.0** - Fuel consumption tracking and temperature sensor fixes
@@ -157,13 +163,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### From 1.1.0 to 1.2.0
 - **No Breaking Changes**: This is a bug fix release. All existing configurations remain compatible.
 
-### From 1.3.1 to the next release
+### From 1.3.1 to 2.0.0
 - **`power_switch` removed**: remove it from YAML, use `control_mode_select` ("Manual" / "Off") or a template switch with `turn_on()` / `turn_off()`.
 - **Daily consumption unit changed from ml to L**: Home Assistant starts new long-term statistics for this sensor; update automations that compare the value.
 
 ---
 
 ## Migration Guides
+
+### Migrating to v2.0.0 from v1.3.x
+
+**Power switch removed:**
+```yaml
+# Old (v1.3.x) - REMOVE THIS
+vevor_heater:
+  power_switch:
+    name: "Heater Power"
+
+# New (v2.0.0) - "Manual" turns the heater on, "Off" turns it off
+vevor_heater:
+  control_mode_select:
+    name: "Heater Control Mode"
+```
+If you prefer a switch, use a template switch with `id(my_heater).turn_on()` / `turn_off()`.
+
+**Daily consumption in liters:** the sensor now reports L instead of ml. Divide thresholds in automations by 1000.
+
+**First boot after the update:** the daily consumption counter is reset once (new day id format), the total consumption is migrated automatically. Settings changed in Home Assistant are saved from now on and survive reboots.
 
 ### Migrating to v1.2.0
 No migration needed - fully backward compatible with v1.1.0.

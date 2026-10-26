@@ -3,7 +3,7 @@ substitutions:
   friendly_name: esp32c3-workshop-heater
 
 external_components:
-  - source: github://zatakon/esphome-vevor-heater@v1.3.1
+  - source: github://zatakon/esphome-vevor-heater@v2.0.0
     components: [vevor_heater]
 
 esphome:
@@ -11,7 +11,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "zatakon.vevor-heater"
-    version: "1.3.0"  
+    version: "2.0.0"
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -70,9 +70,7 @@ vevor_heater:
   
   # Optional: Add integrated controls (v1.3.0+)
   control_mode_select:
-    name: "Heater Control Mode"
-  power_switch:
-    name: "Heater Power"
+    name: "Heater Control Mode"   # "Manual" turns the heater on, "Off" turns it off
   power_level_number:
     name: "Heater Power Level"
   reset_total_consumption_button:
