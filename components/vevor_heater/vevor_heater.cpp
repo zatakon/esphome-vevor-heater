@@ -807,9 +807,12 @@ void VevorHeater::turn_on() {
   }
   
   heater_enabled_ = true;
-  // Set to default power level on turn on
-  power_level_ = static_cast<uint8_t>(default_power_percent_ / 10.0f);
-  ESP_LOGI(TAG, "Heater turned ON at %.0f%% power", default_power_percent_);
+  // Manual mode starts at the default power. Automatic and antifreeze modes
+  // set their power right before calling turn_on(), so keep it.
+  if (control_mode_ == ControlMode::MANUAL) {
+    power_level_ = static_cast<uint8_t>(default_power_percent_ / 10.0f);
+  }
+  ESP_LOGI(TAG, "Heater turned ON at %d%% power", power_level_ * 10);
 }
 
 void VevorHeater::turn_off() {
