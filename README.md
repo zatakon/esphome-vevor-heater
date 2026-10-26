@@ -15,7 +15,7 @@ An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Ho
 
 - **Plug & Play**: Add just a few lines to your ESPHome configuration
 - **Automatic Sensor Creation**: All sensors created automatically with sensible defaults
-- **Home Assistant Integration**: Native climate entity support
+- **Home Assistant Integration**: Sensors, control mode select and number entities created automatically
 - **Multiple Control Modes**: 
   - **Off**: Heater completely disabled
   - **Manual**: Direct power level control by user
@@ -39,6 +39,15 @@ An easy-to-use ESPHome library for controlling Vevor diesel heaters with full Ho
 ### Supported Heaters
 - Vevor diesel heaters (model XMZ-D2 2 kW, 5 kW tested)
 - Other heaters using the same protocol may work
+
+### Other Vevor Protocols
+
+Not every Vevor heater uses this 4800 baud UART protocol (frames starting with `0xAA`). Some models and controllers, for example ZM8001, CY-32 and an 8 kW unit with a blue LCD controller, use a slow PWM-style pulse code on the same single data wire. This component cannot talk to them, but there are ESPHome projects for that variant:
+
+- [kellerman/vevor_pwm](https://github.com/kellerman/vevor_pwm)
+- [alxkalb/vevor-8kw-diesel-heater-esphome](https://github.com/alxkalb/vevor-8kw-diesel-heater-esphome)
+
+Some Bluetooth / altitude-compensated units use yet another variant (2400 baud, frames starting with `0xA8`), see [vevor_heater_control#1](https://github.com/zatakon/vevor_heater_control/issues/1). A logic analyzer on the data line quickly shows which one you have.
 
 ### ESP32 Board
 - ESP32-C3, ESP32, ESP32-S2, ESP32-S3
