@@ -395,17 +395,12 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
       
       // Update daily consumption sensor
       if (daily_consumption_sensor_) {
-        daily_consumption_sensor_->publish_state(daily_consumption_ml_);
+        daily_consumption_sensor_->publish_state(daily_consumption_ml_ / 1000.0f);  // Convert ml to L
       }
       
       // Update total consumption sensor
       if (total_consumption_sensor_) {
         total_consumption_sensor_->publish_state(total_consumption_ml_ / 1000.0f);  // Convert ml to L
-      }
-      
-      // Update gas consumption sensor (daily consumption in cubic meters)
-      if (gas_consumption_sensor_) {
-        gas_consumption_sensor_->publish_state(daily_consumption_ml_ / 1000000.0f);  // Convert ml to m³
       }
       
       // Save data periodically (every 30 seconds to reduce flash wear)
@@ -430,7 +425,7 @@ void VevorHeater::check_daily_reset() {
     save_fuel_consumption_data();
     
     if (daily_consumption_sensor_) {
-      daily_consumption_sensor_->publish_state(daily_consumption_ml_);
+      daily_consumption_sensor_->publish_state(daily_consumption_ml_ / 1000.0f);  // Convert ml to L
     }
   }
 }
@@ -441,13 +436,15 @@ uint32_t VevorHeater::get_days_since_epoch() {
   if (time_component_ != nullptr) {
     auto now = time_component_->now();
     if (now.is_valid()) {
-      // Calculate days since epoch using ESPHome time
-      // This will properly handle midnight in the configured timezone
+      // Use year and day_of_year from local timezone (SNTP with timezone handles this)
+      // ESPTime fields are already adjusted to configured timezone, so day_of_year changes at local midnight
       if (time_sync_warning_shown_) {
         ESP_LOGI(TAG, "Time synced successfully via time component");
         time_sync_warning_shown_ = false;  // Reset flag
       }
-      return now.timestamp / (24 * 60 * 60);
+      // Return unique day identifier: year * 400 + day_of_year
+      // This changes at local midnight when timezone is properly configured
+      return now.year * 400 + now.day_of_year;
     } else {
       ESP_LOGVV(TAG, "Time component present but time not valid yet");
     }
@@ -515,7 +512,7 @@ void VevorHeater::load_fuel_consumption_data() {
   
   // Publish initial value to sensor so it's not "unknown"
   if (daily_consumption_sensor_) {
-    daily_consumption_sensor_->publish_state(daily_consumption_ml_);
+    daily_consumption_sensor_->publish_state(daily_consumption_ml_ / 1000.0f);  // Convert ml to L
   }
   
   // Publish total consumption
@@ -523,11 +520,7 @@ void VevorHeater::load_fuel_consumption_data() {
   if (total_consumption_sensor_) {
     total_consumption_sensor_->publish_state(total_consumption_ml_ / 1000.0f);  // Convert ml to L
   }
-  
-  // Publish gas consumption (daily)
-  if (gas_consumption_sensor_) {
-    gas_consumption_sensor_->publish_state(daily_consumption_ml_ / 1000000.0f);  // Convert ml to m³
-  }
+
 }
 
 void VevorHeater::reset_daily_consumption() {
@@ -536,11 +529,7 @@ void VevorHeater::reset_daily_consumption() {
   save_fuel_consumption_data();
   
   if (daily_consumption_sensor_) {
-    daily_consumption_sensor_->publish_state(daily_consumption_ml_);
-  }
-  
-  if (gas_consumption_sensor_) {
-    gas_consumption_sensor_->publish_state(0.0f);
+    daily_consumption_sensor_->publish_state(daily_consumption_ml_ / 1000.0f);  // Convert ml to L
   }
 }
 

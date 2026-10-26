@@ -325,7 +325,7 @@ When `auto_sensors: true` (default), these sensors are automatically created:
 | State Duration               | Time in current state         | s    | Duration     |
 | Cooling Down                 | Cooling down status           | -    | -            |
 | Hourly Consumption           | Instantaneous fuel rate       | ml/h | -            |
-| Daily Consumption            | Total fuel consumed today     | ml   | -            |
+| Daily Consumption            | Total fuel consumed today     | L    | Gas          |
 | Total Consumption            | Cumulative fuel consumption   | L    | -            |
 
 ### Fuel Consumption Tracking
