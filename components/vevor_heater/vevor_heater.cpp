@@ -367,38 +367,44 @@ void VevorHeater::update_sensors(const std::vector<uint8_t> &frame) {
   }
   
   // Glow plug current (byte 13)
+  // Values are always parsed and only published when a sensor is configured,
+  // so the control logic does not depend on which sensors exist
   uint8_t glow_current_raw = frame[13];
+  glow_plug_current_ = glow_current_raw;
   if (glow_plug_current_sensor_) {
-    glow_plug_current_ = glow_current_raw;
     glow_plug_current_sensor_->publish_state(glow_plug_current_);
   }
   
   // Cooling down flag (byte 14)
   uint8_t cooling_flag = frame[14];
+  cooling_down_ = (cooling_flag != 0);
   if (cooling_down_sensor_) {
-    cooling_down_ = (cooling_flag != 0);
     cooling_down_sensor_->publish_state(cooling_down_);
   }
   
   // Heat exchanger temperature (bytes 16-17) - Signed value for negative temps
-  if (heat_exchanger_temperature_sensor_ && frame.size() > 17) {
+  if (frame.size() > 17) {
     // Read as signed int16 to handle negative temperatures correctly
     int16_t temp_raw = static_cast<int16_t>(read_uint16_be(frame, 16));
     heat_exchanger_temperature_ = temp_raw / 10.0f;
-    heat_exchanger_temperature_sensor_->publish_state(heat_exchanger_temperature_);
+    if (heat_exchanger_temperature_sensor_) {
+      heat_exchanger_temperature_sensor_->publish_state(heat_exchanger_temperature_);
+    }
     
     // Update current temperature for climate control (no duplicate temperature sensor)
     current_temperature_ = heat_exchanger_temperature_;
   }
   
   // State duration (bytes 20-21)
-  if (state_duration_sensor_ && frame.size() > 21) {
-    uint16_t duration_raw = read_uint16_be(frame, 20);
-    state_duration_sensor_->publish_state(duration_raw);
+  if (frame.size() > 21) {
+    state_duration_ = read_uint16_be(frame, 20);
+    if (state_duration_sensor_) {
+      state_duration_sensor_->publish_state(state_duration_);
+    }
   }
   
   // Pump frequency (byte 23)
-  if (pump_frequency_sensor_ && frame.size() > 23) {
+  if (frame.size() > 23) {
     uint8_t pump_raw = frame[23];
     float new_pump_frequency = pump_raw / 10.0f;
     
@@ -406,13 +412,17 @@ void VevorHeater::update_sensors(const std::vector<uint8_t> &frame) {
     update_fuel_consumption(new_pump_frequency);
     
     pump_frequency_ = new_pump_frequency;
-    pump_frequency_sensor_->publish_state(pump_frequency_);
+    if (pump_frequency_sensor_) {
+      pump_frequency_sensor_->publish_state(pump_frequency_);
+    }
   }
   
   // Fan speed (bytes 28-29)
-  if (fan_speed_sensor_ && frame.size() > 29) {
+  if (frame.size() > 29) {
     fan_speed_ = read_uint16_be(frame, 28);
-    fan_speed_sensor_->publish_state(fan_speed_);
+    if (fan_speed_sensor_) {
+      fan_speed_sensor_->publish_state(fan_speed_);
+    }
   }
 }
 
