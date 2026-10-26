@@ -68,14 +68,12 @@ CONF_COOLING_DOWN = "cooling_down"
 CONF_HOURLY_CONSUMPTION = "hourly_consumption"
 CONF_DAILY_CONSUMPTION = "daily_consumption"
 CONF_TOTAL_CONSUMPTION = "total_consumption"
-CONF_GAS_CONSUMPTION = "gas_consumption"
 CONF_LOW_VOLTAGE_ERROR = "low_voltage_error"
 
 # Fuel consumption constants
 UNIT_MILLILITERS = "ml"
 UNIT_MILLILITERS_PER_HOUR = "ml/h"
 UNIT_LITERS = "L"
-UNIT_CUBIC_METERS = "m³"
 
 # Simplified sensor schemas with good defaults - removed duplicate temperature sensor
 SENSOR_SCHEMAS = {
@@ -138,22 +136,16 @@ SENSOR_SCHEMAS = {
         icon="mdi:fuel",
     ),
     CONF_DAILY_CONSUMPTION: sensor.sensor_schema(
-        unit_of_measurement=UNIT_MILLILITERS,
+        unit_of_measurement=UNIT_LITERS,
+        device_class="gas",
         state_class=STATE_CLASS_TOTAL_INCREASING,
-        accuracy_decimals=2,
-        icon="mdi:counter",
+        accuracy_decimals=3,
+        icon="mdi:gas-station",
     ),    CONF_TOTAL_CONSUMPTION: sensor.sensor_schema(
         unit_of_measurement=UNIT_LITERS,
         state_class=STATE_CLASS_TOTAL_INCREASING,
         accuracy_decimals=3,
         icon="mdi:fuel",
-    ),
-    CONF_GAS_CONSUMPTION: sensor.sensor_schema(
-        unit_of_measurement=UNIT_CUBIC_METERS,
-        device_class="gas",
-        state_class=STATE_CLASS_TOTAL_INCREASING,
-        accuracy_decimals=3,
-        icon="mdi:gas-station",
     ),
 }
 
@@ -332,7 +324,6 @@ async def to_code(config):
             (CONF_HOURLY_CONSUMPTION, "set_hourly_consumption_sensor"),
             (CONF_DAILY_CONSUMPTION, "set_daily_consumption_sensor"),
             (CONF_TOTAL_CONSUMPTION, "set_total_consumption_sensor"),
-            (CONF_GAS_CONSUMPTION, "set_gas_consumption_sensor"),
         ]
 
         text_sensors_to_create = [
