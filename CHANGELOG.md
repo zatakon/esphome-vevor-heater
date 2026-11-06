@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Fan Duty** sensor: fan PWM duty cycle in % from byte 15 of the heater frame, created by `auto_sensors` ([zatakon/vevor_heater_control#9](https://github.com/zatakon/vevor_heater_control/issues/9))
+
 ### Planned
 - Complete climate entity integration
 - Additional heater models support

@@ -389,6 +389,13 @@ void VevorHeater::update_sensors(const std::vector<uint8_t> &frame) {
     cooling_down_sensor_->publish_state(cooling_down_);
   }
   
+  // Fan PWM duty cycle (byte 15) in 1/16 steps, 16 = 100 %. The heater
+  // regulates the fan speed with it (#9 in zatakon/vevor_heater_control).
+  fan_duty_ = frame[15] * 100.0f / 16.0f;
+  if (fan_duty_sensor_) {
+    fan_duty_sensor_->publish_state(fan_duty_);
+  }
+
   // Heat exchanger temperature (bytes 16-17) - Signed value for negative temps
   if (frame.size() > 17) {
     // Read as signed int16 to handle negative temperatures correctly
@@ -1239,6 +1246,7 @@ void VevorHeater::dump_config() {
   LOG_TEXT_SENSOR("  ", "State", state_sensor_);
   LOG_SENSOR("  ", "Power Level", power_level_sensor_);
   LOG_SENSOR("  ", "Fan Speed", fan_speed_sensor_);
+  LOG_SENSOR("  ", "Fan Duty", fan_duty_sensor_);
   LOG_SENSOR("  ", "Pump Frequency", pump_frequency_sensor_);
   LOG_SENSOR("  ", "Glow Plug Current", glow_plug_current_sensor_);
   LOG_SENSOR("  ", "Heat Exchanger Temperature", heat_exchanger_temperature_sensor_);

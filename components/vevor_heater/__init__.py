@@ -62,6 +62,7 @@ CONF_INPUT_VOLTAGE = "input_voltage"
 CONF_STATE = "state"
 CONF_POWER_LEVEL = "power_level"
 CONF_FAN_SPEED = "fan_speed"
+CONF_FAN_DUTY = "fan_duty"
 CONF_PUMP_FREQUENCY = "pump_frequency"
 CONF_GLOW_PLUG_CURRENT = "glow_plug_current"
 CONF_HEAT_EXCHANGER_TEMPERATURE = "heat_exchanger_temperature"
@@ -98,6 +99,12 @@ SENSOR_SCHEMAS = {
     ),
     CONF_FAN_SPEED: sensor.sensor_schema(
         unit_of_measurement=UNIT_REVOLUTIONS_PER_MINUTE,
+        state_class=STATE_CLASS_MEASUREMENT,
+        accuracy_decimals=0,
+        icon=ICON_FAN,
+    ),
+    CONF_FAN_DUTY: sensor.sensor_schema(
+        unit_of_measurement=UNIT_PERCENT,
         state_class=STATE_CLASS_MEASUREMENT,
         accuracy_decimals=0,
         icon=ICON_FAN,
@@ -161,6 +168,7 @@ AUTO_SENSOR_ID_INFIX = {
     CONF_INPUT_VOLTAGE: "sensor",
     CONF_POWER_LEVEL: "sensor",
     CONF_FAN_SPEED: "sensor",
+    CONF_FAN_DUTY: "sensor",
     CONF_PUMP_FREQUENCY: "sensor",
     CONF_GLOW_PLUG_CURRENT: "sensor",
     CONF_HEAT_EXCHANGER_TEMPERATURE: "sensor",
@@ -263,6 +271,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_STATE): SENSOR_SCHEMAS[CONF_STATE],
             cv.Optional(CONF_POWER_LEVEL): SENSOR_SCHEMAS[CONF_POWER_LEVEL],
             cv.Optional(CONF_FAN_SPEED): SENSOR_SCHEMAS[CONF_FAN_SPEED],
+            cv.Optional(CONF_FAN_DUTY): SENSOR_SCHEMAS[CONF_FAN_DUTY],
             cv.Optional(CONF_PUMP_FREQUENCY): SENSOR_SCHEMAS[CONF_PUMP_FREQUENCY],
             cv.Optional(CONF_GLOW_PLUG_CURRENT): SENSOR_SCHEMAS[CONF_GLOW_PLUG_CURRENT],
             cv.Optional(CONF_HEAT_EXCHANGER_TEMPERATURE): SENSOR_SCHEMAS[
@@ -386,6 +395,7 @@ async def to_code(config):
         (CONF_INPUT_VOLTAGE, "set_input_voltage_sensor", sensor.new_sensor),
         (CONF_POWER_LEVEL, "set_power_level_sensor", sensor.new_sensor),
         (CONF_FAN_SPEED, "set_fan_speed_sensor", sensor.new_sensor),
+        (CONF_FAN_DUTY, "set_fan_duty_sensor", sensor.new_sensor),
         (CONF_PUMP_FREQUENCY, "set_pump_frequency_sensor", sensor.new_sensor),
         (CONF_GLOW_PLUG_CURRENT, "set_glow_plug_current_sensor", sensor.new_sensor),
         (CONF_HEAT_EXCHANGER_TEMPERATURE, "set_heat_exchanger_temperature_sensor", sensor.new_sensor),
