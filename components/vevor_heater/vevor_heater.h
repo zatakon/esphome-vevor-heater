@@ -139,6 +139,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_state_sensor(text_sensor::TextSensor *sensor) { state_sensor_ = sensor; }
   void set_power_level_sensor(sensor::Sensor *sensor) { power_level_sensor_ = sensor; }
   void set_fan_speed_sensor(sensor::Sensor *sensor) { fan_speed_sensor_ = sensor; }
+  void set_fan_duty_sensor(sensor::Sensor *sensor) { fan_duty_sensor_ = sensor; }
   void set_pump_frequency_sensor(sensor::Sensor *sensor) { pump_frequency_sensor_ = sensor; }
   void set_glow_plug_current_sensor(sensor::Sensor *sensor) { glow_plug_current_sensor_ = sensor; }
   void set_heat_exchanger_temperature_sensor(sensor::Sensor *sensor) { heat_exchanger_temperature_sensor_ = sensor; }
@@ -296,6 +297,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   float input_voltage_{0.0};
   float heat_exchanger_temperature_{0.0};
   uint16_t fan_speed_{0};
+  float fan_duty_{0.0};  // Fan PWM duty cycle [%]
   float pump_frequency_{0.0};
   float glow_plug_current_{0.0};
   uint16_t state_duration_{0};
@@ -321,6 +323,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   text_sensor::TextSensor *state_sensor_{nullptr};
   sensor::Sensor *power_level_sensor_{nullptr};
   sensor::Sensor *fan_speed_sensor_{nullptr};
+  sensor::Sensor *fan_duty_sensor_{nullptr};
   sensor::Sensor *pump_frequency_sensor_{nullptr};
   sensor::Sensor *glow_plug_current_sensor_{nullptr};
   sensor::Sensor *heat_exchanger_temperature_sensor_{nullptr};
