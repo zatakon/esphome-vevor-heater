@@ -118,6 +118,12 @@ void VevorHeater::update() {
   // Check voltage safety
   check_voltage_safety();
   
+  // End priming after the same time as the original controller
+  if (priming_ && millis() - priming_since_ >= PRIMING_DURATION_MS) {
+    ESP_LOGI(TAG, "Fuel pump priming finished after %" PRIu32 " s", PRIMING_DURATION_MS / 1000);
+    stop_priming();
+  }
+  
   // Handle antifreeze mode logic
   if (control_mode_ == ControlMode::ANTIFREEZE) {
     handle_antifreeze_mode();
@@ -135,7 +141,8 @@ void VevorHeater::update() {
   // Send frames at different intervals based on heater state:
   // - When heating or in non-OFF state: send every SEND_INTERVAL_MS (1 second)
   // - When OFF and not enabled: send polling requests every polling_interval_ms_ (default 1 minute)
-  bool is_heating_or_active = heater_enabled_ || (current_state_ != HeaterState::OFF);
+  bool is_heating_or_active = heater_enabled_ || (current_state_ != HeaterState::OFF) ||
+                              priming_ || priming_stop_pending_;
   
   uint32_t now = millis();
   uint32_t send_interval = is_heating_or_active ? SEND_INTERVAL_MS : polling_interval_ms_;
@@ -257,6 +264,39 @@ void VevorHeater::send_controller_frame() {
   // Build controller frame
   frame.push_back(FRAME_START);           // 0: Start byte
   frame.push_back(CONTROLLER_ID);         // 1: Controller ID
+  
+  if (priming_ || priming_stop_pending_) {
+    // Fuel pump priming, decoded from the original controller in
+    // zatakon/vevor_heater_control#8: it starts priming with command 0x06,
+    // byte 8 = 0x02 and requested state 0x03, and stops it with command 0x06
+    // and state 0x05. In between, like in normal operation, the requested
+    // state is repeated with the status request command.
+    uint8_t command;
+    uint8_t byte8;
+    uint8_t requested_state;
+    if (priming_stop_pending_) {
+      command = 0x06;
+      byte8 = power_level_;  // The captured stop frame has the power level here
+      requested_state = 0x05;
+      priming_stop_pending_ = false;
+    } else {
+      command = priming_start_sent_ ? 0x02 : 0x06;
+      byte8 = 0x02;  // 0x02 in the captured priming frame, not the power level
+      requested_state = static_cast<uint8_t>(ControllerState::CMD_PRIME);
+      priming_start_sent_ = true;
+    }
+    frame.push_back(command);                  // 2: Command
+    frame.push_back(CONTROLLER_FRAME_LENGTH);  // 3: Frame length
+    frame.insert(frame.end(), 4, 0x00);        // 4-7: Unknown
+    frame.push_back(byte8);                    // 8
+    frame.push_back(requested_state);          // 9: Requested state
+    frame.insert(frame.end(), 5, 0x00);        // 10-14: Unknown
+    frame.push_back(0x00);                     // 15: Checksum
+    frame.back() = calculate_checksum(frame);
+    this->write_array(frame.data(), frame.size());
+    ESP_LOGD(TAG, "Sent priming frame: command=0x%02X, state=0x%02X", command, requested_state);
+    return;
+  }
   
   // Determine command based on current state and desired state
   if (!heater_enabled_) {
@@ -438,8 +478,9 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
   uint32_t time_delta = current_time - last_consumption_update_;
   
   // Only update if the heater is in a state where fuel is being consumed
+  // Priming pumps fuel from the tank into the fuel line, so it is counted too
   if (current_state_ == HeaterState::STABLE_COMBUSTION || 
-      current_state_ == HeaterState::HEATING_UP) {
+      current_state_ == HeaterState::HEATING_UP || priming_) {
     
     // If pump frequency > 0, fuel is being injected
     if (pump_frequency > 0.0f && time_delta > 0) {
@@ -694,8 +735,9 @@ void VevorHeater::update_low_voltage_error_sensor() {
 }
 
 void VevorHeater::handle_antifreeze_mode() {
-  // No automatic restarts while a start or low voltage lockout is active
-  if (start_lockout_ || low_voltage_lockout_) {
+  // No automatic restarts while a start or low voltage lockout is active or
+  // the fuel pump is priming
+  if (start_lockout_ || low_voltage_lockout_ || priming_) {
     return;
   }
   
@@ -861,6 +903,11 @@ void VevorHeater::set_control_mode(ControlMode mode) {
 }
 
 void VevorHeater::turn_on() {
+  if (priming_) {
+    ESP_LOGW(TAG, "Cannot turn on heater while the fuel pump is priming, stop priming first");
+    return;
+  }
+  
   // Automatic modes skip their control logic while locked out, so this call
   // comes from the user (select, lambda, switch) and acknowledges the lockout
   clear_start_lockout();
@@ -933,6 +980,56 @@ void VevorHeater::clear_start_lockout() {
   }
 }
 
+bool VevorHeater::start_priming() {
+  if (priming_) {
+    return true;
+  }
+  // Like the original controller: only while the heater is off and idle
+  if (heater_enabled_ || get_mode_option() != ModeOption::OFF) {
+    ESP_LOGW(TAG, "Cannot prime the fuel pump: select \"Off\" first");
+    return false;
+  }
+  // While off the heater is only polled every polling_interval, so the last
+  // frame can be older than the communication timeout
+  if (!voltage_valid_) {
+    ESP_LOGW(TAG, "Cannot prime the fuel pump: no data from the heater yet");
+    return false;
+  }
+  if (current_state_ != HeaterState::OFF || cooling_down_) {
+    ESP_LOGW(TAG, "Cannot prime the fuel pump: the heater is not off (%s)", state_to_string(current_state_));
+    return false;
+  }
+  priming_ = true;
+  priming_start_sent_ = false;
+  priming_stop_pending_ = false;
+  priming_since_ = millis();
+  // Frames come only every polling interval while off, do not count that gap
+  last_consumption_update_ = millis();
+  ESP_LOGI(TAG, "Fuel pump priming started for %" PRIu32 " s", PRIMING_DURATION_MS / 1000);
+  publish_priming_state();
+  // Send the first priming frame right away
+  send_controller_frame();
+  last_send_time_ = millis();
+  return true;
+}
+
+void VevorHeater::stop_priming() {
+  if (!priming_) {
+    return;
+  }
+  priming_ = false;
+  // Only send the stop frame when the heater was told to prime at all
+  priming_stop_pending_ = priming_start_sent_;
+  ESP_LOGI(TAG, "Fuel pump priming stopped");
+  publish_priming_state();
+}
+
+void VevorHeater::publish_priming_state() {
+  if (priming_switch_) {
+    priming_switch_->publish_state(priming_);
+  }
+}
+
 const char *VevorHeater::mode_option_to_string(ModeOption option) {
   // Must match the options of the control mode select in __init__.py
   switch (option) {
@@ -989,7 +1086,9 @@ void VevorHeater::apply_mode_option(ModeOption option) {
 }
 
 void VevorHeater::select_mode_option(ModeOption option) {
-  // Any explicit mode selection by the user acknowledges a start lockout
+  // Any explicit mode selection by the user ends priming and acknowledges a
+  // start lockout
+  stop_priming();
   clear_start_lockout();
   apply_mode_option(option);
   save_settings();
@@ -1074,8 +1173,9 @@ float VevorHeater::calculate_power_for_temp_diff(float temp_diff) {
 }
 
 void VevorHeater::handle_automatic_mode() {
-  // No automatic restarts while a start or low voltage lockout is active
-  if (start_lockout_ || low_voltage_lockout_) {
+  // No automatic restarts while a start or low voltage lockout is active or
+  // the fuel pump is priming
+  if (start_lockout_ || low_voltage_lockout_ || priming_) {
     return;
   }
   

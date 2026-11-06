@@ -496,6 +496,22 @@ Instead it turns the heater request off and sets the **Start Lockout** binary se
 
 Check the heater (fuel supply, glow plug, exhaust) before clearing the lockout.
 
+### Fuel Pump Priming (experimental)
+
+Priming runs the fuel pump to fill an empty fuel line, for example after the tank was detached. The original controller offers it right after power-up by holding its left button: the fuel pump runs at about 6.3 Hz for 300 s.
+
+```yaml
+vevor_heater:
+  id: my_heater
+  uart_id: heater_uart
+  priming_switch:
+    name: "Fuel Pump Priming"
+```
+
+Turning the switch on starts priming, turning it off stops it, and it turns itself off after 300 s. Priming is only accepted while the control mode is "Off" and the heater is off and not cooling down. Selecting any control mode stops priming, and Antifreeze, Semi-Auto and Full-Auto pause while it runs. Pumped fuel counts into the daily and total consumption.
+
+The priming frames were decoded from the original controller by [@Hurricos](https://github.com/Hurricos) ([zatakon/vevor_heater_control#8](https://github.com/zatakon/vevor_heater_control/issues/8)), but this has not been tested with every heater yet. Watch the pump frequency sensor and the heater while priming the first time, and please report the result in that issue.
+
 ### Custom Sensor Names
 
 ```yaml
