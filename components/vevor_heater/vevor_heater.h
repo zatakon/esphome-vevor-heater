@@ -53,6 +53,7 @@ enum class HeaterState : uint8_t {
 // Controller command states
 enum class ControllerState : uint8_t {
   CMD_OFF = 0x02,
+  CMD_PRIME = 0x03,
   CMD_START = 0x06,
   CMD_RUNNING = 0x08
 };
@@ -66,6 +67,7 @@ static const uint8_t HEATER_FRAME_LENGTH = 0x33;
 static const uint32_t COMMUNICATION_TIMEOUT_MS = 5000;
 static const uint32_t SEND_INTERVAL_MS = 1000;
 static const uint32_t DEFAULT_POLLING_INTERVAL_MS = 300000; // 1 minute when not heating
+static const uint32_t PRIMING_DURATION_MS = 300000;  // The original controller primes for 300 s
 
 // Fuel consumption data as stored by older versions, only read once to migrate it
 struct FuelConsumptionDataV1 {
@@ -149,6 +151,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void set_total_consumption_sensor(sensor::Sensor *sensor) { total_consumption_sensor_ = sensor; }
   void set_low_voltage_error_sensor(binary_sensor::BinarySensor *sensor) { low_voltage_error_sensor_ = sensor; }
   void set_start_lockout_sensor(binary_sensor::BinarySensor *sensor) { start_lockout_sensor_ = sensor; }
+  void set_priming_switch(switch_::Switch *sw) { priming_switch_ = sw; }
   
   // Control methods
   void turn_on();
@@ -158,6 +161,11 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void reset_total_consumption();
   void clear_start_lockout();
   bool is_start_locked_out() const { return start_lockout_; }
+  
+  // Fuel pump priming (filling the fuel line), only while the heater is off
+  bool start_priming();
+  void stop_priming();
+  bool is_priming() const { return priming_; }
   void set_auto_mode_type(AutoModeType type) { auto_mode_type_ = type; }
   AutoModeType get_auto_mode_type() const { return auto_mode_type_; }
   
@@ -230,6 +238,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   void update_low_voltage_error_sensor();
   void handle_antifreeze_mode();
   void trigger_start_lockout(HeaterState old_state, HeaterState new_state);
+  void publish_priming_state();
   
   // Fuel consumption tracking
   void update_fuel_consumption(float pump_frequency);
@@ -279,6 +288,12 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   bool stop_command_sent_{false};       // A stop command was sent at least once
   uint32_t last_stop_command_time_{0};  // millis() of the last stop command
   static constexpr uint32_t STOP_RESPONSE_WINDOW_MS = 30000;  // Stops within this window after our stop command are expected
+  
+  // Fuel pump priming state
+  bool priming_{false};
+  bool priming_start_sent_{false};     // The first priming frame (command 0x06) was sent
+  bool priming_stop_pending_{false};   // Send one stop frame after priming ended
+  uint32_t priming_since_{0};
   
   // Automatic mode state
   AutoModeType auto_mode_type_{AutoModeType::OFF};  // Off, Semi-Auto, or Full-Auto
@@ -332,6 +347,7 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   binary_sensor::BinarySensor *low_voltage_error_sensor_{nullptr};
   binary_sensor::BinarySensor *start_lockout_sensor_{nullptr};
   number::Number *injected_per_pulse_number_{nullptr};
+  switch_::Switch *priming_switch_{nullptr};
 };
 
 // Number component for injected per pulse configuration
@@ -395,6 +411,28 @@ class VevorHeaterPowerLevelNumber : public number::Number, public Component {
       
       heater_->set_manual_power_percent(value);
       this->publish_state(value);
+    }
+  }
+  
+  VevorHeater *heater_{nullptr};
+};
+
+// Switch for fuel pump priming, turns itself off when priming ends
+class VevorPrimingSwitch : public switch_::Switch, public Component {
+ public:
+  void set_vevor_heater(VevorHeater *heater) { heater_ = heater; }
+  
+  void setup() override { this->publish_state(false); }
+  
+ protected:
+  void write_state(bool state) override {
+    if (heater_) {
+      if (state) {
+        heater_->start_priming();
+      } else {
+        heater_->stop_priming();
+      }
+      this->publish_state(heater_->is_priming());
     }
   }
   

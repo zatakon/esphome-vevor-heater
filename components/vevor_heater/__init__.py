@@ -35,6 +35,7 @@ VevorResetTotalConsumptionButton = vevor_heater_ns.class_("VevorResetTotalConsum
 VevorControlModeSelect = vevor_heater_ns.class_("VevorControlModeSelect", select.Select, cg.Component)
 VevorHeaterPowerLevelNumber = vevor_heater_ns.class_("VevorHeaterPowerLevelNumber", number.Number, cg.Component)
 VevorTargetTemperatureNumber = vevor_heater_ns.class_("VevorTargetTemperatureNumber", number.Number, cg.Component)
+VevorPrimingSwitch = vevor_heater_ns.class_("VevorPrimingSwitch", switch.Switch, cg.Component)
 
 # Configuration keys
 CONF_AUTO_SENSORS = "auto_sensors"
@@ -49,6 +50,7 @@ CONF_POLLING_INTERVAL = "polling_interval"
 CONF_RESET_TOTAL_CONSUMPTION_BUTTON = "reset_total_consumption_button"
 CONF_POWER_LEVEL_NUMBER = "power_level_number"
 CONF_TARGET_TEMPERATURE_NUMBER = "target_temperature_number"
+CONF_PRIMING_SWITCH = "priming_switch"
 
 # Control mode options
 CONTROL_MODE_MANUAL = "manual"
@@ -319,6 +321,12 @@ CONFIG_SCHEMA = cv.All(
                 cv.Optional("max_value", default=35.0): cv.float_,
                 cv.Optional("step", default=0.5): cv.float_,
             }),
+            # Switch for fuel pump priming (experimental), never restored on boot
+            cv.Optional(CONF_PRIMING_SWITCH): switch.switch_schema(
+                VevorPrimingSwitch,
+                icon="mdi:fuel",
+                default_restore_mode="ALWAYS_OFF",
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -438,3 +446,10 @@ async def to_code(config):
         num = await number.new_number(num_config, min_value=num_config["min_value"], max_value=num_config["max_value"], step=num_config["step"])
         await cg.register_component(num, num_config)
         cg.add(num.set_vevor_heater(var))
+
+    # Switch for fuel pump priming
+    if CONF_PRIMING_SWITCH in config:
+        sw = await switch.new_switch(config[CONF_PRIMING_SWITCH])
+        await cg.register_component(sw, config[CONF_PRIMING_SWITCH])
+        cg.add(sw.set_vevor_heater(var))
+        cg.add(var.set_priming_switch(sw))

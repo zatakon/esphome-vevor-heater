@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Fuel pump priming** (experimental): `priming_switch` runs the fuel pump for 300 s like the original controller, only while the heater is off ([zatakon/vevor_heater_control#8](https://github.com/zatakon/vevor_heater_control/issues/8))
+
 ### Planned
 - Complete climate entity integration
 - Additional heater models support
