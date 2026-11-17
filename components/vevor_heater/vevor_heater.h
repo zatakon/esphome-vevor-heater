@@ -294,6 +294,9 @@ class VevorHeater : public PollingComponent, public uart::UARTDevice {
   bool priming_start_sent_{false};     // The first priming frame (command 0x06) was sent
   bool priming_stop_pending_{false};   // Send one stop frame after priming ended
   uint32_t priming_since_{0};
+  // Like the original controller: priming only once per boot and only before
+  // the heater was first turned on, so someone has to reset the ESP for another
+  bool priming_locked_{false};
   
   // Automatic mode state
   AutoModeType auto_mode_type_{AutoModeType::OFF};  // Off, Semi-Auto, or Full-Auto
@@ -428,7 +431,12 @@ class VevorPrimingSwitch : public switch_::Switch, public Component {
   void write_state(bool state) override {
     if (heater_) {
       if (state) {
-        heater_->start_priming();
+        if (!heater_->start_priming()) {
+          // Refused: the switch stays off. publish_state(false) would be dropped
+          // as unchanged and the web UI would keep its optimistic On, so mark the
+          // last published state unknown to force the off state out again
+          this->publish_dedup_.next_unknown();
+        }
       } else {
         heater_->stop_priming();
       }

@@ -508,7 +508,7 @@ vevor_heater:
     name: "Fuel Pump Priming"
 ```
 
-Turning the switch on starts priming, turning it off stops it, and it turns itself off after 300 s. Priming is only accepted while the control mode is "Off" and the heater is off and not cooling down. Selecting any control mode stops priming, and Antifreeze, Semi-Auto and Full-Auto pause while it runs. Pumped fuel counts into the daily and total consumption.
+Turning the switch on starts priming, turning it off stops it, and it turns itself off after 300 s. Priming is only accepted while the control mode is "Off" and the heater is off and not cooling down. Like the original controller it is only accepted once after the ESP boots and only before the heater was turned on, so a second priming needs a restart of the ESP (reset button or power cycle), which makes sure someone is at the heater. Selecting any control mode stops priming, and Antifreeze, Semi-Auto and Full-Auto pause while it runs. Pumped fuel is not counted in the daily and total consumption. A refused request is logged as a warning and the switch flips back to off.
 
 The priming frames were decoded from the original controller by [@Hurricos](https://github.com/Hurricos) ([zatakon/vevor_heater_control#8](https://github.com/zatakon/vevor_heater_control/issues/8)), but this has not been tested with every heater yet. Watch the pump frequency sensor and the heater while priming the first time, and please report the result in that issue.
 

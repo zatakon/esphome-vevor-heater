@@ -368,6 +368,10 @@ void VevorHeater::process_heater_frame(const std::vector<uint8_t> &frame) {
       HeaterState old_state = current_state_;
       current_state_ = new_state;
       ESP_LOGD(TAG, "Heater state changed to: %s", state_to_string(current_state_));
+      // Also covers a heater that was already running when the ESP booted
+      if (new_state != HeaterState::OFF) {
+        priming_locked_ = true;
+      }
       
       // The heater left heating up or combustion on its own (failed ignition,
       // flame-out, heater-side error) while we still request it to run. A stop
@@ -477,10 +481,10 @@ void VevorHeater::update_fuel_consumption(float pump_frequency) {
   uint32_t current_time = millis();
   uint32_t time_delta = current_time - last_consumption_update_;
   
-  // Only update if the heater is in a state where fuel is being consumed
-  // Priming pumps fuel from the tank into the fuel line, so it is counted too
+  // Only update if the heater is in a state where fuel is being consumed.
+  // Priming is not counted: it mostly pushes air out of an empty fuel line.
   if (current_state_ == HeaterState::STABLE_COMBUSTION || 
-      current_state_ == HeaterState::HEATING_UP || priming_) {
+      current_state_ == HeaterState::HEATING_UP) {
     
     // If pump frequency > 0, fuel is being injected
     if (pump_frequency > 0.0f && time_delta > 0) {
@@ -942,6 +946,7 @@ void VevorHeater::turn_on() {
   }
   
   heater_enabled_ = true;
+  priming_locked_ = true;
   // Manual mode starts at the Manual power (default_power_percent until the
   // user changes it). Automatic and antifreeze modes set their power right
   // before calling turn_on(), so keep it.
@@ -984,6 +989,10 @@ bool VevorHeater::start_priming() {
   if (priming_) {
     return true;
   }
+  if (priming_locked_) {
+    ESP_LOGW(TAG, "Cannot prime the fuel pump: only allowed once after boot and before the heater was turned on, restart the ESP first");
+    return false;
+  }
   // Like the original controller: only while the heater is off and idle
   if (heater_enabled_ || get_mode_option() != ModeOption::OFF) {
     ESP_LOGW(TAG, "Cannot prime the fuel pump: select \"Off\" first");
@@ -995,16 +1004,19 @@ bool VevorHeater::start_priming() {
     ESP_LOGW(TAG, "Cannot prime the fuel pump: no data from the heater yet");
     return false;
   }
-  if (current_state_ != HeaterState::OFF || cooling_down_) {
+  if (current_state_ != HeaterState::OFF) {
     ESP_LOGW(TAG, "Cannot prime the fuel pump: the heater is not off (%s)", state_to_string(current_state_));
     return false;
   }
+  if (cooling_down_) {
+    ESP_LOGW(TAG, "Cannot prime the fuel pump: the heater reports it is cooling down");
+    return false;
+  }
   priming_ = true;
+  priming_locked_ = true;
   priming_start_sent_ = false;
   priming_stop_pending_ = false;
   priming_since_ = millis();
-  // Frames come only every polling interval while off, do not count that gap
-  last_consumption_update_ = millis();
   ESP_LOGI(TAG, "Fuel pump priming started for %" PRIu32 " s", PRIMING_DURATION_MS / 1000);
   publish_priming_state();
   // Send the first priming frame right away
