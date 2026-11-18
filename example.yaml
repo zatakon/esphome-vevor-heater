@@ -75,6 +75,10 @@ vevor_heater:
     name: "Heater Power Level"
   reset_total_consumption_button:
     name: "Reset Total Fuel Consumption"
+  # Experimental (next release): runs the fuel pump for 300 s, only once after the ESP boots
+  # and only before the heater was turned on. Stay at the heater while it runs.
+  # priming_switch:
+  #   name: "Fuel Pump Priming"
   
   # Optional: Configure antifreeze mode thresholds (v1.3.0+)
   # Requires external_temperature_sensor to be set
